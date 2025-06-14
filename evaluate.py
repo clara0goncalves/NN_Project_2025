@@ -20,7 +20,11 @@ import seaborn as sns
 from models.unet import get_model
 from utils.metrics import (dice_score, iou_score, pixel_accuracy, 
                           precision_recall_f1, confusion_matrix_metrics)
-from prepare_data import test_loader
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from preprocessing.prepare_data import  test_loader
 
 
 class ModelEvaluator:
@@ -140,3 +144,4 @@ class ModelEvaluator:
                 'min': np.min(all_f1),
                 'max': np.max(all_f1)
             }
+        }
