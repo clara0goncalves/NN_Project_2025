@@ -53,23 +53,9 @@ python3 prepare_data.py
 python3 train.py
 ```
 
-### 3. Evaluation
+### 3. Evaluation and Inference
 ```bash
 python3 evaluate.py
-```
-
-### 4. Inference
-```python
-from utils.inference_utils import WaterBodySegmentor
-
-# Initialize segmentor
-segmentor = WaterBodySegmentor('checkpoints/best.pth')
-
-# Single image prediction
-segmentor.visualize_prediction('test_image.jpg')
-
-# Batch processing
-segmentor.batch_predict('input_folder', 'output_folder')
 ```
 
 ## Model Architecture
