@@ -5,9 +5,6 @@ import torch
 from torch.utils.data import Dataset
 
 class WaterBodiesDataset(Dataset):
-    """
-    Custom PyTorch Dataset for loading water body images and their masks.
-    """
     def __init__(self, image_paths, mask_paths, transform=None):
         self.image_paths = image_paths
         self.mask_paths = mask_paths
@@ -20,23 +17,28 @@ class WaterBodiesDataset(Dataset):
         img_path = self.image_paths[idx]
         mask_path = self.mask_paths[idx]
 
-        # Read image and mask
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
-        # --- THE FIX ---
-        # Binarize the mask to ensure pixel values are 0 or 1.
-        # Any pixel value above 127 will become 1, all others will become 0.
+        # Create the ignore_mask from the original image to identify black "no-data" areas.
+        ignore_mask = (image.sum(axis=-1) > 0)
+        
+        # Binarize the ground truth mask to ensure values are 0 or 1.
         mask = (mask > 127).astype(np.float32)
 
-        # Apply the transformations from the Albumentations pipeline
         if self.transform:
             transformed = self.transform(image=image, mask=mask)
             image = transformed['image']
             mask = transformed['mask']
         
-        # Add a channel dimension for the loss function
+        # We also need to resize the ignore_mask to match the final output size.
+        # This is done after the main transform to ensure correct dimensions.
+        ignore_mask = cv2.resize(ignore_mask.astype(np.uint8), (256, 256), interpolation=cv2.INTER_NEAREST)
+        
+        # Convert all to PyTorch tensors
         mask = mask.float().unsqueeze(0)
+        ignore_mask = torch.from_numpy(ignore_mask).bool().unsqueeze(0)
 
-        return image, mask
+        ## --- THIS LINE IS CORRECTED --- ##
+        return image, mask, ignore_mask
