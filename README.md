@@ -99,13 +99,21 @@ Key hyperparameters:
 
 ## Results
 ### 1. Baseline U-Net architecture:
+
 Model performance on test set:
+
 IoU Score:
+
   Mean: 0.7192 ± 0.2086
+  
   Range: [0.0581, 1.0000]
   
 Overall Dataset Metrics:
+
   Accuracy: 0.9081
+  
   Precision: 0.8601
+  
   Recall: 0.8582
+  
   F1-Score: 0.8591
