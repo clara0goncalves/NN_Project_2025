@@ -246,7 +246,7 @@ def main():
         'scheduler_patience': 10,
         'scheduler_factor': 0.5,
         'early_stopping': True,
-        'early_stopping_patience': 20
+        'early_stopping_patience': 15
     }
     
     # Create trainer and start training

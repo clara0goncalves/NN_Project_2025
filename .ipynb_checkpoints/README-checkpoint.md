@@ -53,23 +53,9 @@ python3 prepare_data.py
 python3 train.py
 ```
 
-### 3. Evaluation
+### 3. Evaluation and Inference
 ```bash
 python3 evaluate.py
-```
-
-### 4. Inference
-```python
-from utils.inference_utils import WaterBodySegmentor
-
-# Initialize segmentor
-segmentor = WaterBodySegmentor('checkpoints/best.pth')
-
-# Single image prediction
-segmentor.visualize_prediction('test_image.jpg')
-
-# Batch processing
-segmentor.batch_predict('input_folder', 'output_folder')
 ```
 
 ## Model Architecture
@@ -100,12 +86,42 @@ Key hyperparameters:
 ## Results
 ### 1. Baseline U-Net architecture:
 Model performance on test set:
+
 IoU Score:
+
   Mean: 0.7192 ± 0.2086
+  
   Range: [0.0581, 1.0000]
+
   
 Overall Dataset Metrics:
+
   Accuracy: 0.9081
+  
   Precision: 0.8601
+  
   Recall: 0.8582
+  
   F1-Score: 0.8591
+
+
+### 2. Residual blocks and Dropout layers to the encoder and bottleneck
+Model performance on test set:
+
+IoU Score:
+
+  Mean: 0.7622 ± 0.2079
+  
+  Range: [0.0321, 1.0000]
+
+Overall Dataset Metrics:
+
+  Accuracy: 0.9286
+  
+  Precision: 0.9119
+  
+  Recall: 0.8650
+  
+  F1-Score: 0.8878
+
+  

@@ -85,7 +85,6 @@ Key hyperparameters:
 
 ## Results
 ### 1. Baseline U-Net architecture:
-
 Model performance on test set:
 
 IoU Score:
@@ -93,6 +92,7 @@ IoU Score:
   Mean: 0.7192 ± 0.2086
   
   Range: [0.0581, 1.0000]
+
   
 Overall Dataset Metrics:
 
@@ -103,3 +103,25 @@ Overall Dataset Metrics:
   Recall: 0.8582
   
   F1-Score: 0.8591
+
+
+### 2. Residual blocks and Dropout layers to the encoder and bottleneck.
+Model performance on test set:
+
+IoU Score:
+
+  Mean: 0.7622 ± 0.2079
+  
+  Range: [0.0321, 1.0000]
+
+Overall Dataset Metrics:
+
+  Accuracy: 0.9286
+  
+  Precision: 0.9119
+  
+  Recall: 0.8650
+  
+  F1-Score: 0.8878
+
+  
