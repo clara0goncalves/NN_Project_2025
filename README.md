@@ -124,4 +124,23 @@ Overall Dataset Metrics:
   
   F1-Score: 0.8878
 
+
+### 3. Integrate attention modules into skip connections.
+
+IoU Score:
+
+  Mean: 0.7530 ± 0.2232
   
+  Range: [0.0227, 1.0000]
+
+
+Overall Dataset Metrics:
+
+  Accuracy: 0.9212
+  
+  Precision: 0.8856
+  
+  Recall: 0.8712
+  
+  F1-Score: 0.8783
+
