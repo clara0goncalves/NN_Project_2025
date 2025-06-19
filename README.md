@@ -110,37 +110,27 @@ Model performance on test set:
 
 IoU Score:
 
-  Mean: 0.7622 ± 0.2079
-  
-  Range: [0.0321, 1.0000]
+  Mean: 0.7622 ± 0.2079\
+  Range: [0.0321, 1.0000]\
 
 Overall Dataset Metrics:
 
-  Accuracy: 0.9286
-  
-  Precision: 0.9119
-  
-  Recall: 0.8650
-  
-  F1-Score: 0.8878
+  Accuracy: 0.9286\
+  Precision: 0.9119\
+  Recall: 0.8650\
+  F1-Score: 0.8878\
 
 
 ### 3. Integrate attention modules into skip connections.
 
 IoU Score:
-
-  Mean: 0.7530 ± 0.2232
-  
-  Range: [0.0227, 1.0000]
-
+    
+  Mean: 0.7650 ± 0.2107\
+  Range: [0.0449, 1.0000]\
 
 Overall Dataset Metrics:
-
-  Accuracy: 0.9212
-  
-  Precision: 0.8856
-  
-  Recall: 0.8712
-  
-  F1-Score: 0.8783
+  Accuracy: 0.9290\
+  Precision: 0.9087\
+  Recall: 0.8699\
+  F1-Score: 0.8889\
 

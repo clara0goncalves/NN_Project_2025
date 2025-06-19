@@ -1,6 +1,12 @@
-# evaluate_fixed.py
+#!/usr/bin/env python3
 """
-Fixed evaluation script that handles model architecture mismatches
+Unified evaluation script that handles different model architectures
+Usage: python evaluate.py --model <model_type> --path <model_path>
+
+Supported model types:
+- attention: models.attention
+- unet_enhanced: models.unet_enhanced  
+- unet: models.unet
 """
 import os
 import torch
@@ -12,14 +18,35 @@ import cv2
 from sklearn.metrics import classification_report
 import seaborn as sns
 import sys
+import argparse
+import importlib
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from models.unet import get_model
 from utils.metrics import (dice_score, iou_score, pixel_accuracy, 
                           precision_recall_f1, confusion_matrix_metrics)
 from preprocessing.prepare_data import test_loader
+
+
+def get_model_module(model_type):
+    """
+    Dynamically import the correct model module based on model type
+    """
+    try:
+        if model_type == 'attention':
+            from models.attention import get_model
+        elif model_type == 'unet_enhanced':
+            from models.unet_enhanced import get_model
+        elif model_type == 'unet':
+            from models.unet import get_model
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+        
+        return get_model
+    except ImportError as e:
+        print(f"Error importing model {model_type}: {e}")
+        raise
 
 
 def detect_model_architecture(checkpoint_path):
@@ -61,7 +88,7 @@ def detect_model_architecture(checkpoint_path):
     return bilinear, model_type
 
 
-def get_model_with_auto_config(n_channels, n_classes, checkpoint_path):
+def get_model_with_auto_config(n_channels, n_classes, checkpoint_path, get_model_func):
     """
     Create model with automatically detected configuration
     """
@@ -80,15 +107,15 @@ def get_model_with_auto_config(n_channels, n_classes, checkpoint_path):
     for config in configs_to_try:
         try:
             # Create model with current config
-            if hasattr(get_model, '__code__') and 'base_features' in get_model.__code__.co_varnames:
-                model = get_model(
+            if hasattr(get_model_func, '__code__') and 'base_features' in get_model_func.__code__.co_varnames:
+                model = get_model_func(
                     n_channels=n_channels,
                     n_classes=n_classes,
                     bilinear=config['bilinear'],
                     base_features=config['base_features']
                 )
             else:
-                model = get_model(
+                model = get_model_func(
                     n_channels=n_channels,
                     n_classes=n_classes,
                     bilinear=config['bilinear']
@@ -105,17 +132,17 @@ def get_model_with_auto_config(n_channels, n_classes, checkpoint_path):
     
     # If all configs fail, try partial loading
     print("All automatic configs failed. Attempting partial loading...")
-    return load_model_partial(n_channels, n_classes, checkpoint_path)
+    return load_model_partial(n_channels, n_classes, checkpoint_path, get_model_func)
 
 
-def load_model_partial(n_channels, n_classes, checkpoint_path):
+def load_model_partial(n_channels, n_classes, checkpoint_path, get_model_func):
     """
     Load model with partial state dict matching (ignoring mismatched layers)
     """
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     
     # Try with bilinear=True first
-    model = get_model(n_channels=n_channels, n_classes=n_classes, bilinear=True)
+    model = get_model_func(n_channels=n_channels, n_classes=n_classes, bilinear=True)
     
     model_dict = model.state_dict()
     checkpoint_dict = checkpoint['model_state_dict']
@@ -141,16 +168,22 @@ def load_model_partial(n_channels, n_classes, checkpoint_path):
 
 
 class ModelEvaluator:
-    def __init__(self, model_path, config):
+    def __init__(self, model_path, model_type, config):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
+        print(f"Model type: {model_type}")
+        print(f"Model path: {model_path}")
+        
+        # Get the appropriate model function
+        get_model_func = get_model_module(model_type)
         
         # Try to automatically detect and load the correct model
         try:
             self.model, checkpoint = get_model_with_auto_config(
                 config['n_channels'], 
                 config['n_classes'], 
-                model_path
+                model_path,
+                get_model_func
             )
             self.model = self.model.to(self.device)
             self.model.eval()
@@ -347,8 +380,7 @@ class ModelEvaluator:
         axes = axes.flatten()
         
         for i, (metric_name, values) in enumerate(metrics.items()):
-            # This would need the raw data, so let's skip the distribution plot
-            # and just show the summary statistics
+            # Show summary statistics as bar chart
             ax = axes[i]
             ax.bar(['Mean', 'Min', 'Max'], 
                    [values['mean'], values['min'], values['max']],
@@ -367,18 +399,40 @@ class ModelEvaluator:
         print(f"\nResults saved to 'evaluation_results/' directory")
 
 
-if __name__ == '__main__':
+def main():
+    parser = argparse.ArgumentParser(description='Evaluate segmentation models')
+    parser.add_argument('--model', type=str, required=True,
+                       choices=['attention', 'unet_enhanced', 'unet'],
+                       help='Model type to evaluate')
+    parser.add_argument('--path', type=str, required=True,
+                       help='Path to the model checkpoint')
+    parser.add_argument('--examples', type=int, default=5,
+                       help='Number of example predictions to save')
+    
+    args = parser.parse_args()
+    
+    # Verify model path exists
+    if not os.path.exists(args.path):
+        print(f"Error: Model path does not exist: {args.path}")
+        return
+    
     config = {
         'n_channels': 3,       # RGB images
         'n_classes': 1,        # binary segmentation
         'bilinear': True       # This will be auto-detected
     }
 
-    model_path = 'checkpoints/unet_water_segmentation_20250616_142425/best.pth'
-
     try:
-        evaluator = ModelEvaluator(model_path=model_path, config=config)
-        metrics = evaluator.evaluate_dataset(test_loader, save_examples=True, num_examples=5)
+        evaluator = ModelEvaluator(
+            model_path=args.path, 
+            model_type=args.model,
+            config=config
+        )
+        metrics = evaluator.evaluate_dataset(
+            test_loader, 
+            save_examples=True, 
+            num_examples=args.examples
+        )
         
         print("\nEvaluation completed successfully!")
         
@@ -386,3 +440,7 @@ if __name__ == '__main__':
         print(f"Evaluation failed: {e}")
         import traceback
         traceback.print_exc()
+
+
+if __name__ == '__main__':
+    main()
