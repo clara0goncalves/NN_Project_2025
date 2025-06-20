@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from segmentation_models_pytorch.losses import LovaszLoss
 
 class DiceLoss(nn.Module):
     """
@@ -100,3 +101,25 @@ class IoULoss(nn.Module):
         union = pred.sum() + target.sum() - intersection
         
         iou = (intersection + self.smooth) / (union + self.smooth)
+        return 1 - iou
+    
+# --- NEW: Combined Focal + Lovasz Loss ---
+class FocalLovaszLoss(nn.Module):
+    def __init__(self, focal_weight=0.5, lovasz_weight=0.5, focal_alpha=1, focal_gamma=2):
+        super(FocalLovaszLoss, self).__init__()
+        self.focal_weight = focal_weight
+        self.lovasz_weight = lovasz_weight
+        
+        # Instantiate the component losses with their respective parameters
+        self.focal = FocalLoss(alpha=focal_alpha, gamma=focal_gamma)
+        self.lovasz = LovaszLoss(mode='binary')
+
+    def forward(self, pred, target):
+        # Calculate the individual losses
+        focal_loss = self.focal(pred, target)
+        lovasz_loss = self.lovasz(pred, target)
+        
+        # Calculate the weighted sum
+        combined_loss = (self.focal_weight * focal_loss) + (self.lovasz_weight * lovasz_loss)
+        
+        return combined_loss

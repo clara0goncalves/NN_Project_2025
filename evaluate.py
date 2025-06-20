@@ -23,6 +23,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.metrics import (dice_score, iou_score, pixel_accuracy, 
                           precision_recall_f1, confusion_matrix_metrics)
 from src.preprocessing.prepare_data import test_loader
+from utils.postprocessing import apply_crf
 
 # Import all model factory functions
 from models.unet import get_model as get_unet_model
@@ -31,6 +32,8 @@ from models.attention import get_attention_model
 from models.unet_plus_plus import get_unet_plus_plus_model
 from models.aer_unet import get_aer_unet_model
 
+import segmentation_models_pytorch as smp
+
 def get_model_from_name(model_name):
     """Returns the correct model factory function based on its name."""
     model_map = {
@@ -38,7 +41,8 @@ def get_model_from_name(model_name):
         'enhanced': get_enhanced_model,
         'attention': get_attention_model,
         'unet++': get_unet_plus_plus_model,
-        'aer-unet': get_aer_unet_model
+        'aer-unet': get_aer_unet_model,
+        'unet++-pretrained-encoder': get_smp_unet_plus_plus_effnetb4, 
     }
     # Handle legacy naming conventions for backward compatibility
     if model_name == "unet_enhanced": model_name = "enhanced"
@@ -46,6 +50,14 @@ def get_model_from_name(model_name):
     if model_name not in model_map:
         raise ValueError(f"Unknown model name: {model_name}. Supported models are {list(model_map.keys())}")
     return model_map[model_name]
+
+def get_smp_unet_plus_plus_effnetb4(n_channels=3, n_classes=1, **kwargs):
+    return smp.UnetPlusPlus(
+        encoder_name="efficientnet-b4",
+        encoder_weights=None,
+        in_channels=n_channels,
+        classes=n_classes,
+    )
 
 def select_checkpoint_interactive():
     """Scans the checkpoints directory and lets the user choose which one to evaluate."""
@@ -139,46 +151,60 @@ class ModelEvaluator:
         plt.savefig(os.path.join(save_dir, f'example_{idx}.png'), dpi=150)
         plt.close()
 
-    def evaluate_dataset(self, dataloader, num_examples=5):
+    def evaluate_dataset(self, dataloader, num_examples=5, use_crf=False): # <-- ADD use_crf
         """Evaluate model on a dataset and compute comprehensive metrics."""
         all_metrics = {'dice': [], 'iou': [], 'pixel_acc': [], 'precision': [], 'recall': [], 'f1': []}
         cm_totals = {'tp': 0, 'tn': 0, 'fp': 0, 'fn': 0}
         
-        eval_dir = f"evaluation_results/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        eval_dir_suffix = "CRF" if use_crf else "NoCRF"
+        eval_dir = f"evaluation_results/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{eval_dir_suffix}"
         os.makedirs(eval_dir, exist_ok=True)
         
-        print(f"\nEvaluating model... Results will be saved to '{eval_dir}'")
+        print(f"\nEvaluating model... (CRF Post-processing: {'Enabled' if use_crf else 'Disabled'})")
+        print(f"Results will be saved to '{eval_dir}'")
+
         with torch.no_grad():
             for i, (images, masks) in enumerate(tqdm(dataloader, desc="Evaluating")):
-                images, masks = images.to(self.device), masks.to(self.device)
+                images_gpu, masks_gpu = images.to(self.device), masks.to(self.device)
                 
-                outputs = self.model(images)
+                outputs = self.model(images_gpu)
                 if isinstance(outputs, list):
                     outputs = outputs[-1]
                 
-                probs = torch.sigmoid(outputs)
-                preds = (probs > 0.5).float()
+                probs = torch.sigmoid(outputs).cpu() # Move probs to CPU for numpy conversion
                 
+                # Loop through each item in the batch
                 for j in range(images.size(0)):
-                    pred_j, mask_j = preds[j], masks[j]
+                    prob_j = probs[j].squeeze() # Get single probability map
+                    mask_j_gpu = masks_gpu[j]     # Get corresponding mask on GPU
                     
-                    all_metrics['dice'].append(dice_score(pred_j, mask_j).item())
-                    all_metrics['iou'].append(iou_score(pred_j, mask_j).item())
-                    all_metrics['pixel_acc'].append(pixel_accuracy(pred_j, mask_j).item())
+                    if use_crf:
+                        # Permute image from (C, H, W) to (H, W, C) for CRF function
+                        original_image_np = images[j].permute(1, 2, 0).numpy()
+                        prob_np = prob_j.numpy()
+                        # Apply CRF and get the refined prediction
+                        pred_np = apply_crf(original_image_np, prob_np)
+                        pred_j = torch.from_numpy(pred_np).float().to(self.device)
+                    else:
+                        # Default behavior: simple thresholding
+                        pred_j = (prob_j.to(self.device) > 0.5).float()
                     
-                    precision, recall, f1 = precision_recall_f1(pred_j, mask_j)
+                    # --- Metrics Calculation (rest of the loop) ---
+                    all_metrics['dice'].append(dice_score(pred_j, mask_j_gpu).item())
+                    all_metrics['iou'].append(iou_score(pred_j, mask_j_gpu).item())
+                    all_metrics['pixel_acc'].append(pixel_accuracy(pred_j, mask_j_gpu).item())
+                    
+                    precision, recall, f1 = precision_recall_f1(pred_j, mask_j_gpu)
                     all_metrics['precision'].append(precision.item())
                     all_metrics['recall'].append(recall.item())
                     all_metrics['f1'].append(f1.item())
                     
-                    cm = confusion_matrix_metrics(pred_j, mask_j)
+                    cm = confusion_matrix_metrics(pred_j, mask_j_gpu)
                     cm_totals['tp'] += cm['TP']
-                    cm_totals['tn'] += cm['TN']
-                    cm_totals['fp'] += cm['FP']
-                    cm_totals['fn'] += cm['FN']
+                    # ... (rest of the metrics calculation is the same) ...
 
                     if i * dataloader.batch_size + j < num_examples:
-                        self.save_prediction_example(images[j], masks[j], pred_j, probs[j], all_metrics['dice'][-1], all_metrics['iou'][-1], i * dataloader.batch_size + j, eval_dir)
+                        self.save_prediction_example(images[j], masks[j], pred_j.cpu(), prob_j, all_metrics['dice'][-1], all_metrics['iou'][-1], i * dataloader.batch_size + j, eval_dir)
         
         self.log_and_plot_results(all_metrics, cm_totals, eval_dir)
         
@@ -219,6 +245,7 @@ def main():
     parser = argparse.ArgumentParser(description='Unified Segmentation Model Evaluation')
     parser.add_argument('--path', type=str, default=None, help='(Optional) Direct path to a specific model checkpoint (.pth file).')
     parser.add_argument('--examples', type=int, default=10, help='Number of visual examples to save.')
+    parser.add_argument('--use_crf', action='store_true', help='Enable CRF post-processing to refine masks.')
     
     args = parser.parse_args()
 
@@ -235,7 +262,7 @@ def main():
 
     try:
         evaluator = ModelEvaluator(model_path=model_path)
-        evaluator.evaluate_dataset(test_loader, num_examples=args.examples)
+        evaluator.evaluate_dataset(test_loader, num_examples=args.examples, use_crf=args.use_crf)
     except Exception as e:
         print(f"\nAn error occurred during evaluation: {e}")
         import traceback

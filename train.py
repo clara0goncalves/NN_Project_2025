@@ -17,6 +17,9 @@ import json
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+import segmentation_models_pytorch as smp
+import seaborn as sns
+import segmentation_models_pytorch.losses as smp_losses
 
 # Model imports
 from models.unet import get_model as get_basic_model
@@ -27,7 +30,7 @@ from models.aer_unet import get_aer_unet_model
 
 from utils.data_utils import WaterBodiesDataset
 from utils.metrics import dice_score, iou_score
-from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss
+from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss, FocalLovaszLoss
 import sys
 
 # Ensure the project root is in the Python path
@@ -86,7 +89,15 @@ class Trainer:
         """Initialize model based on type"""
         model_type = config['model_type']
         
-        if model_type == 'unet':
+        if model_type == 'unet++-pretrained-encoder':
+            print("Initializing U-Net with pre-trained efficientnet64 encoder.")
+            return smp.UnetPlusPlus(
+                encoder_name="efficientnet-b4",
+                encoder_weights="imagenet",
+                in_channels=config['n_channels'],
+                classes=config['n_classes'],
+            )
+        elif model_type == 'unet':
             return get_basic_model(
                 n_channels=config['n_channels'],
                 n_classes=config['n_classes'],
@@ -144,6 +155,12 @@ class Trainer:
             return TverskyLoss(
                 alpha=self.config.get('tversky_alpha', 0.7),
                 beta=self.config.get('tversky_beta', 0.3)
+            )
+        elif loss_type == 'focal_lovasz':
+            print("Using combined Focal + Lovasz loss.")
+            return FocalLovaszLoss(
+            focal_weight=self.config.get('focal_weight', 0.5),
+            lovasz_weight=self.config.get('lovasz_weight', 0.5)
             )
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
@@ -353,11 +370,12 @@ class Trainer:
         csv_path = os.path.join(self.checkpoint_dir, 'training_history.csv')
         history_df.to_csv(csv_path, index=False)
         
-        # --- FIX: Changed to a more robust style name ---
-        plt.style.use('seaborn-darkgrid')
+        # --- FIX: Use the modern seaborn function for styling ---
+        sns.set_theme(style="darkgrid")
         
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
         
+        # Plotting Loss
         ax1.plot(history_df['epoch'], history_df['train_loss'], 'o-', label='Train Loss')
         ax1.plot(history_df['epoch'], history_df['val_loss'], 'o-', label='Validation Loss')
         ax1.set_ylabel('Loss')
@@ -365,6 +383,7 @@ class Trainer:
         ax1.legend()
         ax1.grid(True)
         
+        # Plotting IoU
         ax2.plot(history_df['epoch'], history_df['train_iou'], 'o-', label='Train IoU')
         ax2.plot(history_df['epoch'], history_df['val_iou'], 'o-', label='Validation IoU')
         ax2.set_xlabel('Epoch')
@@ -438,7 +457,10 @@ class Trainer:
 def parse_args():
     parser = argparse.ArgumentParser(description='Unified U-Net Training Script')
     
-    parser.add_argument('--model', type=str, choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet'], default='unet', help='Model architecture to use')
+    parser.add_argument('--model', type=str, 
+                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder'],
+                        default='unet', 
+                        help='Model architecture to use')
     parser.add_argument('--n_channels', type=int, default=3, help='Number of input channels')
     parser.add_argument('--n_classes', type=int, default=1, help='Number of output classes')
     parser.add_argument('--bilinear', action='store_true', help='Use bilinear upsampling')
@@ -454,7 +476,12 @@ def parse_args():
     parser.add_argument('--scheduler_type', type=str, choices=['plateau', 'cosine', 'step'], default='plateau', help='Scheduler type')
     parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for plateau scheduler')
     parser.add_argument('--scheduler_factor', type=float, default=0.5, help='Factor for plateau scheduler')
-    parser.add_argument('--loss_type', type=str, choices=['bce', 'dice', 'combined', 'focal', 'tversky'], default='combined', help='Loss function type')
+    parser.add_argument('--loss_type', type=str, 
+                        choices=['bce', 'dice', 'combined', 'focal', 'tversky', 'lovasz', 'focal_lovasz'], # Add 'focal_lovasz' and 'lovasz'
+                        default='combined', 
+                        help='Loss function type')
+    parser.add_argument('--focal_weight', type=float, default=0.5, help='Weight for Focal Loss in FocalLovaszLoss')
+    parser.add_argument('--lovasz_weight', type=float, default=0.5, help='Weight for Lovasz Loss in FocalLovaszLoss')
     parser.add_argument('--use_amp', action='store_true', help='Use automatic mixed precision')
     parser.add_argument('--early_stopping', action='store_true', help='Enable early stopping')
     parser.add_argument('--early_stopping_patience', type=int, default=20, help='Early stopping patience')

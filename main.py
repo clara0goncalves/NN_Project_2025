@@ -52,9 +52,17 @@ def train_model():
     print("3. Attention U-Net")
     print("4. U-Net++")
     print("5. AER U-Net")
-    model_choice = input("Enter your choice (1-5): ")
+    print("6. U-Net++ with pre-trained encoder")
+    model_choice = input("Enter your choice (1-6): ")
 
-    model_map = {"1": "unet", "2": "enhanced", "3": "attention", "4": "unet++", "5": "aer-unet"}
+    model_map = {
+        "1": "unet", 
+        "2": "enhanced", 
+        "3": "attention", 
+        "4": "unet++", 
+        "5": "aer-unet",
+        "6": "unet++-pretrained-encoder"
+    }
     model = model_map.get(model_choice)
 
     if not model:
@@ -65,9 +73,14 @@ def train_model():
     num_epochs = input("Number of epochs (default: 50): ") or "50"
     learning_rate = input("Learning rate (default: 1e-4): ") or "1e-4"
     batch_size = input("Batch size (default: 16): ") or "16"
-    loss_type = input("Loss type (e.g., combined, focal, bce; default: combined): ") or "combined"
-
+    loss_type = input("Loss type (e.g., combined, lovasz, focal_lovasz; default: combined): ") or "combined"
     command = f"python3 train.py --model {model} --num_epochs {num_epochs} --learning_rate {learning_rate} --batch_size {batch_size} --loss_type {loss_type}"
+
+    if loss_type == 'focal_lovasz':
+        print("\n--- Configure FocalLovaszLoss Weights ---")
+        focal_weight = input("Focal loss weight (default: 0.5): ") or "0.5"
+        lovasz_weight = input("Lovasz loss weight (default: 0.5): ") or "0.5"
+        command += f" --focal_weight {focal_weight} --lovasz_weight {lovasz_weight}"
 
     if model in ["enhanced", "attention", "unet++", "aer-unet"]:
         if input("Use mixed precision (AMP)? (Y/n): ").lower() != 'n':
@@ -76,9 +89,6 @@ def train_model():
         if model == 'unet++':
             if input("Use deep supervision? (Y/n): ").lower() != 'n':
                 command += " --deep_supervision"
-            if input("Use SE Attention? (Y/n): ").lower() != 'n':
-                 command += " --use_se_block"
-
 
     if input("Use early stopping? (Y/n): ").lower() != 'n':
         command += " --early_stopping"
@@ -90,15 +100,28 @@ def train_model():
     run_command(command)
     print("\n--- Model Training Finished ---")
 
-# --- UPDATED: Simplified evaluate_model function ---
+# --- MODIFIED: The evaluate_model function is now interactive ---
 def evaluate_model():
     """
-    Launches the interactive evaluation script.
+    Launches the interactive evaluation script, asking the user if they
+    want to use CRF post-processing.
     """
     print("\n--- Launching Interactive Evaluation ---")
-    # This command now runs evaluate.py without arguments,
-    # allowing its interactive mode to take over.
-    command = "python3 evaluate.py"
+    
+    # The evaluation script itself is interactive for model selection.
+    # We add an interactive prompt here for the CRF option.
+    use_crf_choice = input("Use CRF post-processing to refine masks? (Y/n): ").lower()
+    
+    if use_crf_choice != 'n':
+        # If user inputs 'y', 'yes', or just presses Enter
+        command = "python3 evaluate.py --use_crf"
+        print("CRF enabled.")
+    else:
+        # If user inputs 'n' or 'no'
+        command = "python3 evaluate.py"
+        print("CRF disabled.")
+
+    print(f"\nExecuting command: {command}\n")
     run_command(command)
     print("\n--- Evaluation Finished ---")
 
