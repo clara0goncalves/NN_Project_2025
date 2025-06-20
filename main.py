@@ -1,111 +1,148 @@
-import os
 import subprocess
-import sys
-import shutil
-import glob
-from sklearn.model_selection import train_test_split
-from tqdm import tqdm
-import torch
+import shlex
+import os
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+def run_command(command):
+    """
+    Executes a command in the shell and allows it to print directly to the console.
+    This function is used to run the different scripts of the project.
+    """
+    try:
+        subprocess.run(
+            shlex.split(command), 
+            check=True,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
 
-# --- CHANGED: Import the data loading function ---
-from utils.prepare_data import get_data_loaders
+    except FileNotFoundError:
+        print(f"Error: The command '{command.split()[0]}' was not found.")
+        print("Please ensure that the script is in the same directory or in the system's PATH.")
+    except subprocess.CalledProcessError as e:
+        print(f"\nError: Command returned non-zero exit code {e.returncode}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
-def display_menu():
-    """Displays the main interactive menu to the user."""
-    # ... (unchanged) ...
-    print("\n" + "="*35); print("--- Water Body Segmentation ---"); print("="*35)
-    print("1. Setup Environment"); print("2. Split Raw Dataset (Run once)")
-    print("3. Train New Model"); print("4. Evaluate Best Model"); print("5. Exit")
-    print("="*35)
+def prepare_data():
+    """
+    Runs the data preparation script as a module to handle imports correctly.
+    """
+    print("\n--- Preparing Data ---")
+    command = "python3 -m src.preprocessing.prepare_data"
+    run_command(command)
+    print("\n--- Data Preparation Finished ---")
 
-def setup_environment():
-    """Installs dependencies from requirements.txt."""
-    # ... (unchanged) ...
-    print("\n--- Setting up the environment ---"); requirements_path = 'requirements.txt'
-    if not os.path.exists(requirements_path): print(f"Error: '{requirements_path}' not found!"); return
-    print("Installing required packages...");
-    try: subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', requirements_path]); print("Setup complete.")
-    except subprocess.CalledProcessError as e: print(f"An error occurred: {e}")
-
-def split_dataset():
-    """Splits the raw dataset into train/val/test sets."""
-
-    print("\n--- Starting Dataset Split ---"); SOURCE_DATA_DIR = 'Water-Bodies-Dataset/'; DEST_DATA_DIR = 'datasets/'
-    TRAIN_SPLIT, VAL_SPLIT, TEST_SPLIT = 0.7, 0.15, 0.15; RANDOM_STATE = 42
-    if not os.path.exists(SOURCE_DATA_DIR): print(f"Error: Source '{SOURCE_DATA_DIR}' not found."); return
-    if os.path.exists(DEST_DATA_DIR):
-        if input(f"Warning: '{DEST_DATA_DIR}' exists. Overwrite? (y/n): ").lower() != 'y': print("Split cancelled."); return
-        shutil.rmtree(DEST_DATA_DIR)
-    image_paths = sorted(glob.glob(os.path.join(SOURCE_DATA_DIR, 'Images', '*.*')))
-    mask_paths = sorted(glob.glob(os.path.join(SOURCE_DATA_DIR, 'Masks', '*.*')))
-    if not image_paths or len(image_paths) != len(mask_paths): print("Error: File mismatch or not found."); return
-    print(f"Found {len(image_paths)} image/mask pairs.")
-    for split in ['train', 'val', 'test']: os.makedirs(os.path.join(DEST_DATA_DIR, split, 'images'), exist_ok=True); os.makedirs(os.path.join(DEST_DATA_DIR, split, 'masks'), exist_ok=True)
-    train_imgs, temp_imgs, train_msks, temp_msks = train_test_split(image_paths, mask_paths, test_size=(VAL_SPLIT + TEST_SPLIT), random_state=RANDOM_STATE)
-    val_imgs, test_imgs, val_msks, test_msks = train_test_split(temp_imgs, temp_msks, test_size=(TEST_SPLIT / (VAL_SPLIT + TEST_SPLIT)), random_state=RANDOM_STATE)
-    datasets = {'train': (train_imgs, train_msks), 'val': (val_imgs, val_msks), 'test': (test_imgs, test_msks)}
-    for split, (images, masks) in datasets.items():
-        print(f"\nCopying {split} files..."); dest_img = os.path.join(DEST_DATA_DIR, split, 'images'); dest_mask = os.path.join(DEST_DATA_DIR, split, 'masks')
-        for f in tqdm(images, desc=f"Images to {split}"): shutil.copy(f, dest_img)
-        for f in tqdm(masks, desc=f"Masks to {split}"): shutil.copy(f, dest_mask)
-    print("\n--- Dataset split complete! ---")
+def visualize_dataset():
+    """
+    Runs the dataset visualization script as a module.
+    """
+    print("\n--- Visualizing Dataset ---")
+    command = "python3 -m src.preprocessing.visualize_dataset"
+    run_command(command)
+    print("\n--- Dataset Visualization Finished ---")
 
 def train_model():
-    """Wrapper to initiate the model training process."""
-    # ... (unchanged) ...
-    print("\n--- Initializing Training ---")
-    try: from model.train import main as train_main; train_main()
-    except Exception as e: print(f"An error occurred during training: {e}")
+    """
+    Guides the user through the process of training a model.
+    """
+    print("\n--- Train a New Model ---")
 
-def evaluate_model():
-    """Interactively finds and evaluates a trained model."""
-    print("\n--- Evaluating a Trained Model ---")
-    checkpoints_dir = 'checkpoints'
-    try:
-        experiments = [d for d in os.listdir(checkpoints_dir) if os.path.isdir(os.path.join(checkpoints_dir, d))]
-        if not experiments: print("Error: No trained models found in 'checkpoints'."); return
-        print("Please choose a model to evaluate:"); [print(f"  {i + 1}: {exp}") for i, exp in enumerate(experiments)]
-        choice_idx = int(input(f"Enter your choice (1-{len(experiments)}): ")) - 1
-        if not 0 <= choice_idx < len(experiments): print("Invalid choice."); return
+    print("Select a model to train:")
+    print("1. Basic U-Net")
+    print("2. Enhanced U-Net")
+    print("3. Attention U-Net")
+    print("4. U-Net++")
+    print("5. AER U-Net")
+    model_choice = input("Enter your choice (1-5): ")
+
+    model_map = {"1": "unet", "2": "enhanced", "3": "attention", "4": "unet++", "5": "aer-unet"}
+    model = model_map.get(model_choice)
+
+    if not model:
+        print("Invalid choice. Please try again.")
+        return
+
+    print("\nEnter training parameters (press Enter to use default values):")
+    num_epochs = input("Number of epochs (default: 50): ") or "50"
+    learning_rate = input("Learning rate (default: 1e-4): ") or "1e-4"
+    batch_size = input("Batch size (default: 16): ") or "16"
+    loss_type = input("Loss type (e.g., combined, focal, bce; default: combined): ") or "combined"
+
+    command = f"python3 train.py --model {model} --num_epochs {num_epochs} --learning_rate {learning_rate} --batch_size {batch_size} --loss_type {loss_type}"
+
+    if model in ["enhanced", "attention", "unet++", "aer-unet"]:
+        if input("Use mixed precision (AMP)? (Y/n): ").lower() != 'n':
+            command += " --use_amp"
         
-        chosen_experiment = experiments[choice_idx]
-        model_path = os.path.join(checkpoints_dir, chosen_experiment, 'best.pth')
-        if not os.path.exists(model_path): print(f"Error: 'best.pth' not found in '{chosen_experiment}'."); return
-            
-        print(f"\nLoading model and config from: {model_path}")
-        checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
-        config = checkpoint.get('config')
-        if not config: sys.exit("Error: Config not found in checkpoint.")
+        if model == 'unet++':
+            if input("Use deep supervision? (Y/n): ").lower() != 'n':
+                command += " --deep_supervision"
+            if input("Use SE Attention? (Y/n): ").lower() != 'n':
+                 command += " --use_se_block"
 
-        # --- CHANGED: Get the test loader here ---
-        print("Preparing test data loader...")
-        _, _, test_loader = get_data_loaders(
-            batch_size=config.get('batch_size', 16),
-            num_workers=config.get('num_workers', 4)
-        )
-        if test_loader is None: return # Exit if data loading failed
 
-        from model.eval import ModelEvaluator
-        evaluator = ModelEvaluator(model_path, config)
-        evaluator.evaluate_dataset(test_loader)
+    if input("Use early stopping? (Y/n): ").lower() != 'n':
+        command += " --early_stopping"
+    
+    if input("Use gradient clipping? (Y/n): ").lower() != 'n':
+        command += " --gradient_clipping"
 
-    except (ValueError, IndexError): print("Invalid input.")
-    except Exception as e: print(f"An error occurred during evaluation: {e}")
+    print(f"\nExecuting command: {command}\n")
+    run_command(command)
+    print("\n--- Model Training Finished ---")
 
-def main():
-    """Main function to run the interactive script."""
-    # ... (unchanged) ...
+# --- UPDATED: Simplified evaluate_model function ---
+def evaluate_model():
+    """
+    Launches the interactive evaluation script.
+    """
+    print("\n--- Launching Interactive Evaluation ---")
+    # This command now runs evaluate.py without arguments,
+    # allowing its interactive mode to take over.
+    command = "python3 evaluate.py"
+    run_command(command)
+    print("\n--- Evaluation Finished ---")
+
+def install_requirements():
+    """
+    Installs or updates the required Python packages from requirements.txt.
+    """
+    print("\n--- Installing/Updating Requirements ---")
+    command = "python3 -m pip install -r requirements.txt"
+    run_command(command)
+    print("\n--- Requirements installation finished ---")
+
+def main_menu():
+    """
+    Displays the main menu and handles user input.
+    """
     while True:
-        display_menu()
-        choice = input("Enter your choice (1-5): ")
-        if choice == '1': setup_environment()
-        elif choice == '2': split_dataset()
-        elif choice == '3': train_model()
-        elif choice == '4': evaluate_model()
-        elif choice == '5': print("Exiting. Goodbye!"); break
-        else: print("Invalid choice. Please try again.")
+        print("\n=====================")
+        print("  Interactive Menu")
+        print("=====================")
+        print("1. Prepare Data")
+        print("2. Visualize Dataset")
+        print("3. Train a New Model")
+        print("4. Evaluate a Trained Model")
+        print("5. Install/Update Requirements")
+        print("6. Exit")
+        
+        choice = input("\nEnter your choice (1-6): ")
+
+        if choice == "1":
+            prepare_data()
+        elif choice == "2":
+            visualize_dataset()
+        elif choice == "3":
+            train_model()
+        elif choice == "4":
+            evaluate_model()
+        elif choice == "5":
+            install_requirements()
+        elif choice == "6":
+            print("Exiting the program. Goodbye!")
+            break
+        else:
+            print("Invalid choice. Please enter a number between 1 and 6.")
 
 if __name__ == "__main__":
-    main()
+    main_menu()
