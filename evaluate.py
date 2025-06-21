@@ -109,14 +109,13 @@ def select_checkpoint_interactive():
 def save_prediction_example(image, true_mask, pred_mask, prob_mask, dice, iou, idx, save_dir):
     """Saves a visualization of a single prediction example."""
     fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    # ... (code to prepare numpy arrays is unchanged) ...
     img_np = image.permute(1, 2, 0).cpu().numpy()
     true_mask_np = true_mask.squeeze().cpu().numpy()
     pred_mask_np = pred_mask.squeeze().cpu().numpy()
     prob_mask_np = prob_mask.squeeze().cpu().numpy()
     
-    # Safely de-normalize for display
-    mean = np.array([0.485, 0.456, 0.406])
-    std = np.array([0.229, 0.224, 0.225])
+    mean = np.array([0.485, 0.456, 0.406]); std = np.array([0.229, 0.224, 0.225])
     img_np = std * img_np + mean
     img_np = np.clip(img_np, 0, 1)
 
@@ -127,14 +126,16 @@ def save_prediction_example(image, true_mask, pred_mask, prob_mask, dice, iou, i
     axes[1].imshow(true_mask_np, cmap='gray')
     axes[1].set_title('Ground Truth Mask')
     axes[1].axis('off')
-
+    
+    # --- SUGGESTED CHANGE ---
     axes[2].imshow(pred_mask_np, cmap='gray')
-    axes[2].set_title(f'Predicted Mask\nIoU: {iou:.4f}')
+    axes[2].set_title(f'Predicted Mask\nIoU: {iou:.4f} | Dice: {dice:.4f}') # <-- Both scores here
     axes[2].axis('off')
 
     im = axes[3].imshow(prob_mask_np, cmap='viridis', vmin=0, vmax=1)
-    axes[3].set_title(f'Probability Map\nDice: {dice:.4f}')
+    axes[3].set_title('Probability Map') # <-- Simpler title
     axes[3].axis('off')
+    # --- END OF CHANGE ---
 
     fig.colorbar(im, ax=axes[3])
     plt.tight_layout()

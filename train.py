@@ -595,64 +595,9 @@ def main():
             continue
         print(f"  {key.replace('_', ' ').capitalize()}: {value}")
     
-    # Create experiment name if not provided
-    if args.experiment_name is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.experiment_name = f"{args.model}_water_segmentation_{timestamp}"
-    
-    # Convert args to config dictionary
-    config = {
-        'experiment_name': args.experiment_name,
-        'model_type': args.model,
-        'n_channels': args.n_channels,
-        'n_classes': args.n_classes,
-        'bilinear': args.bilinear,
-        'learning_rate': args.learning_rate,
-        'weight_decay': args.weight_decay,
-        'batch_size': args.batch_size,
-        'num_epochs': args.num_epochs,
-        'optimizer': args.optimizer,
-        'scheduler_type': args.scheduler_type,
-        'scheduler_patience': args.scheduler_patience,
-        'scheduler_factor': args.scheduler_factor,
-        'loss_type': args.loss_type,
-        'use_amp': args.use_amp,
-        'early_stopping': args.early_stopping,
-        'early_stopping_patience': args.early_stopping_patience,
-        'gradient_clipping': args.gradient_clipping,
-        'max_grad_norm': args.max_grad_norm,
-    }
-    
-    # Add enhanced/attention specific parameters
-    if args.model in ['enhanced', 'attention']:
-        config.update({
-            'base_features': args.base_features,
-            'encoder_dropout': args.encoder_dropout,
-            'bottleneck_dropout': args.bottleneck_dropout,
-        })
-    
-    # Print configuration
-    print("Training Configuration:")
-    print(f"  Model: {config['model_type']}")
-    print(f"  Loss function: {config['loss_type']}")
-    print(f"  Optimizer: {config['optimizer']}")
-    print(f"  Scheduler: {config['scheduler_type']}")
-    print(f"  Learning rate: {config['learning_rate']}")
-    print(f"  Batch size: {config['batch_size']}")
-    print(f"  Epochs: {config['num_epochs']}")
-    
-    if config['model_type'] in ['enhanced', 'attention']:
-        print(f"  Base features: {config['base_features']}")
-        print(f"  Encoder dropout: {config['encoder_dropout']}")
-        print(f"  Bottleneck dropout: {config['bottleneck_dropout']}")
-        print(f"  Mixed precision: {config['use_amp']}")
-    
-    print(f"  Early stopping: {config['early_stopping']}")
-    print(f"  Experiment: {config['experiment_name']}")
-    
-    # Create trainer and start training
     trainer = Trainer(config)
     
+    # Adjust dataloaders based on training batch size
     train_loader_adj = DataLoader(train_loader.dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4, pin_memory=True)
     val_loader_adj = DataLoader(val_loader.dataset, batch_size=config['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
 
