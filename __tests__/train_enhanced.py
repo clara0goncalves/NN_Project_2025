@@ -1,4 +1,6 @@
+
 # train_enhanced.py
+
 """
 Enhanced training pipeline with residual U-Net, dropout, and advanced features
 - Residual blocks in encoder and bottleneck
@@ -8,6 +10,7 @@ Enhanced training pipeline with residual U-Net, dropout, and advanced features
 - Model complexity analysis
 """
 import os
+import sys
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,17 +22,23 @@ import numpy as np
 from datetime import datetime
 import json
 
+# This ensures that imports from 'src', 'utils', etc., work correctly
+# It finds the directory of the current script (__tests__) and goes one level up.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(PROJECT_ROOT)
+
 # Import the enhanced model
 from models.unet_enhanced import get_enhanced_model
 from utils.data_utils import WaterBodiesDataset
 from utils.metrics import dice_score, iou_score
 from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss
-import sys
-import os
+
+
+# ---  Corrected the import path for data loaders ---
+from src.preprocessing.prepare_data import train_loader, val_loader, test_loader
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from preprocessing.prepare_data import train_loader, val_loader, test_loader
-
 
 class EnhancedTrainer:
     def __init__(self, config):
@@ -91,8 +100,9 @@ class EnhancedTrainer:
                 self.optimizer, 
                 mode='min', 
                 patience=config['scheduler_patience'],
+                factor=config['scheduler_factor']
                 factor=config['scheduler_factor'],
-                verbose=True
+                verbose=Tru
             )
         elif config['scheduler_type'] == 'cosine':
             self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
@@ -401,3 +411,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
