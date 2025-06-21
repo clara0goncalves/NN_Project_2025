@@ -578,61 +578,6 @@ def parse_args():
     
     return parser.parse_args()
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Unified U-Net Training Script')
-    
-    # Model selection
-    parser.add_argument('--model', type=str, choices=['unet', 'enhanced', 'attention'],
-                       default='unet', help='Model architecture to use')
-    
-    # Basic model parameters
-    parser.add_argument('--n_channels', type=int, default=3, help='Number of input channels')
-    parser.add_argument('--n_classes', type=int, default=1, help='Number of output classes')
-    parser.add_argument('--bilinear', action='store_true', help='Use bilinear upsampling')
-    
-    # Enhanced/Attention model parameters
-    parser.add_argument('--base_features', type=int, default=64, 
-                       help='Base number of features (enhanced/attention models)')
-    parser.add_argument('--encoder_dropout', type=float, default=0.1,
-                       help='Dropout rate for encoder layers')
-    parser.add_argument('--bottleneck_dropout', type=float, default=0.2,
-                       help='Dropout rate for bottleneck layer')
-    
-    # Training parameters
-    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
-    parser.add_argument('--num_epochs', type=int, default=100, help='Number of epochs')
-    
-    # Optimizer and scheduler
-    parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw', 'sgd'],
-                       default='adam', help='Optimizer type')
-    parser.add_argument('--scheduler_type', type=str, choices=['plateau', 'cosine', 'step'],
-                       default='plateau', help='Scheduler type')
-    parser.add_argument('--scheduler_patience', type=int, default=10,
-                       help='Patience for plateau scheduler')
-    parser.add_argument('--scheduler_factor', type=float, default=0.5,
-                       help='Factor for plateau scheduler')
-    
-    # Loss function
-    parser.add_argument('--loss_type', type=str, 
-                       choices=['bce', 'dice', 'combined', 'focal', 'tversky'],
-                       default='combined', help='Loss function type')
-    
-    # Advanced features
-    parser.add_argument('--use_amp', action='store_true', help='Use automatic mixed precision')
-    parser.add_argument('--early_stopping', action='store_true', help='Enable early stopping')
-    parser.add_argument('--early_stopping_patience', type=int, default=20,
-                       help='Early stopping patience')
-    parser.add_argument('--gradient_clipping', action='store_true', help='Enable gradient clipping')
-    parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Max gradient norm')
-    
-    # Experiment naming
-    parser.add_argument('--experiment_name', type=str, default=None,
-                       help='Custom experiment name')
-    
-    return parser.parse_args()
-
 
 def main():
     args = parse_args()
