@@ -1,4 +1,6 @@
-# __tests__/train_enhanced.py
+
+# train_enhanced.py
+
 """
 Enhanced training pipeline with residual U-Net, dropout, and advanced features
 - Residual blocks in encoder and bottleneck
@@ -20,12 +22,10 @@ import numpy as np
 from datetime import datetime
 import json
 
-# --- FIX 1: Corrected sys.path to point to the project root ---
 # This ensures that imports from 'src', 'utils', etc., work correctly
 # It finds the directory of the current script (__tests__) and goes one level up.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_ROOT)
-
 
 # Import the enhanced model
 from models.unet_enhanced import get_enhanced_model
@@ -33,9 +33,12 @@ from utils.data_utils import WaterBodiesDataset
 from utils.metrics import dice_score, iou_score
 from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss
 
-# --- FIX 2: Corrected the import path for data loaders ---
-from src.preprocessing.prepare_data import train_loader, val_loader, test_loader
 
+# ---  Corrected the import path for data loaders ---
+from src.preprocessing.prepare_data import train_loader, val_loader, test_loader
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from preprocessing.prepare_data import train_loader, val_loader, test_loader
 
 class EnhancedTrainer:
     def __init__(self, config):
@@ -93,12 +96,13 @@ class EnhancedTrainer:
         
         # Enhanced scheduler options
         if config['scheduler_type'] == 'plateau':
-            # --- FIX 3: Removed the 'verbose' argument ---
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                 self.optimizer, 
                 mode='min', 
                 patience=config['scheduler_patience'],
                 factor=config['scheduler_factor']
+                factor=config['scheduler_factor'],
+                verbose=Tru
             )
         elif config['scheduler_type'] == 'cosine':
             self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
@@ -407,3 +411,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

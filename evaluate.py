@@ -2,6 +2,7 @@
 """
 Unified evaluation script that handles all model architectures.
 Now includes interactive prompts for TTA, CRF, and Ensemble mode.
+
 """
 import os
 import torch
@@ -38,9 +39,7 @@ from models.segformer import get_segformer_model
 
 import segmentation_models_pytorch as smp
 
-# --- MODEL FACTORY and HELPER FUNCTIONS (Unchanged) ---
 def get_model_from_name(model_name):
-    # ... (function is unchanged)
     model_map = {
         'unet': get_unet_model, 'enhanced': get_enhanced_model, 'attention': get_attention_model,
         'unet++': get_unet_plus_plus_model, 'aer-unet': get_aer_unet_model,
@@ -53,11 +52,158 @@ def get_model_from_name(model_name):
     return model_map[model_name]
 
 def get_smp_unet_plus_plus_effnetb4(n_channels=3, n_classes=1, **kwargs):
-    # ... (function is unchanged)
     return smp.UnetPlusPlus(encoder_name="efficientnet-b4", encoder_weights=None, in_channels=n_channels, classes=n_classes)
 
+import sys
+import argparse
+import importlib
+
+# Add src to path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from utils.metrics import (dice_score, iou_score, pixel_accuracy, 
+                          precision_recall_f1, confusion_matrix_metrics)
+from preprocessing.prepare_data import test_loader
+
+
+def get_model_module(model_type):
+    """
+    Dynamically import the correct model module based on model type
+    """
+    try:
+        if model_type == 'attention':
+            from models.attention import get_model
+        elif model_type == 'unet_enhanced':
+            from models.unet_enhanced import get_model
+        elif model_type == 'unet':
+            from models.unet import get_model
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+        
+        return get_model
+    except ImportError as e:
+        print(f"Error importing model {model_type}: {e}")
+        raise
+
+
+def detect_model_architecture(checkpoint_path):
+    """
+    Detect the model architecture from the checkpoint
+    """
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    state_dict = checkpoint['model_state_dict']
+    
+    # Check for bilinear upsampling vs transposed convolution
+    has_up_conv = any('up1.up.weight' in key for key in state_dict.keys())
+    bilinear = not has_up_conv
+    
+    # Detect number of channels in the deepest layer
+    down4_keys = [key for key in state_dict.keys() if 'down4' in key and 'weight' in key]
+    if down4_keys:
+        # Get the first conv layer in down4
+        for key in down4_keys:
+            if 'double_conv.0.weight' in key:
+                shape = state_dict[key].shape
+                n_features = shape[0]  # Output channels
+                break
+        else:
+            n_features = 512  # Default fallback
+    else:
+        n_features = 512
+    
+    # Determine if this is a deeper model based on feature count
+    if n_features >= 1024:
+        model_type = 'deep'
+    else:
+        model_type = 'standard'
+    
+    print(f"Detected model architecture:")
+    print(f"  - Type: {model_type}")
+    print(f"  - Bilinear: {bilinear}")
+    print(f"  - Max features: {n_features}")
+    
+    return bilinear, model_type
+
+
+def get_model_with_auto_config(n_channels, n_classes, checkpoint_path, get_model_func):
+    """
+    Create model with automatically detected configuration
+    """
+    bilinear, model_type = detect_model_architecture(checkpoint_path)
+    
+    # Try different model configurations
+    configs_to_try = [
+        {'bilinear': bilinear, 'base_features': 64},
+        {'bilinear': not bilinear, 'base_features': 64},
+        {'bilinear': True, 'base_features': 32},
+        {'bilinear': False, 'base_features': 32},
+    ]
+    
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    
+    for config in configs_to_try:
+        try:
+            # Create model with current config
+            if hasattr(get_model_func, '__code__') and 'base_features' in get_model_func.__code__.co_varnames:
+                model = get_model_func(
+                    n_channels=n_channels,
+                    n_classes=n_classes,
+                    bilinear=config['bilinear'],
+                    base_features=config['base_features']
+                )
+            else:
+                model = get_model_func(
+                    n_channels=n_channels,
+                    n_classes=n_classes,
+                    bilinear=config['bilinear']
+                )
+            
+            # Try to load state dict
+            model.load_state_dict(checkpoint['model_state_dict'])
+            print(f"Successfully loaded model with config: {config}")
+            return model, checkpoint
+            
+        except Exception as e:
+            print(f"Failed with config {config}: {str(e)[:100]}...")
+            continue
+    
+    # If all configs fail, try partial loading
+    print("All automatic configs failed. Attempting partial loading...")
+    return load_model_partial(n_channels, n_classes, checkpoint_path, get_model_func)
+
+
+def load_model_partial(n_channels, n_classes, checkpoint_path, get_model_func):
+    """
+    Load model with partial state dict matching (ignoring mismatched layers)
+    """
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    
+    # Try with bilinear=True first
+    model = get_model_func(n_channels=n_channels, n_classes=n_classes, bilinear=True)
+    
+    model_dict = model.state_dict()
+    checkpoint_dict = checkpoint['model_state_dict']
+    
+    # Filter out mismatched keys
+    filtered_dict = {}
+    for k, v in checkpoint_dict.items():
+        if k in model_dict:
+            if model_dict[k].shape == v.shape:
+                filtered_dict[k] = v
+            else:
+                print(f"Skipping {k}: shape mismatch {model_dict[k].shape} vs {v.shape}")
+        else:
+            print(f"Skipping {k}: key not found in current model")
+    
+    print(f"Loading {len(filtered_dict)}/{len(checkpoint_dict)} layers")
+    
+    # Load the filtered dictionary
+    model_dict.update(filtered_dict)
+    model.load_state_dict(model_dict)
+    
+    return model, checkpoint
+
 def select_checkpoint_interactive():
-    # ... (function is unchanged)
     checkpoint_dir = 'checkpoints'
     if not os.path.isdir(checkpoint_dir): print(f"Error: Checkpoints directory '{checkpoint_dir}' not found."); return None
     available_experiments = sorted([d for d in os.listdir(checkpoint_dir) if os.path.isdir(os.path.join(checkpoint_dir, d))])
@@ -80,7 +226,6 @@ def select_checkpoint_interactive():
     return checkpoint_files[ckpt_choice]
 
 def save_prediction_example(image, true_mask, pred_mask, prob_mask, dice, iou, idx, save_dir):
-    # ... (function is unchanged)
     fig, axes = plt.subplots(1, 4, figsize=(20, 5))
     img_np = image.permute(1, 2, 0).cpu().numpy()
     true_mask_np = true_mask.squeeze().cpu().numpy()
@@ -95,7 +240,6 @@ def save_prediction_example(image, true_mask, pred_mask, prob_mask, dice, iou, i
     fig.colorbar(im, ax=axes[3]); plt.tight_layout(); plt.savefig(os.path.join(save_dir, f'example_{idx}.png'), dpi=150); plt.close()
 
 def log_and_plot_results(metrics_dict, cm_totals, save_dir):
-    # ... (function is unchanged)
     print("\n" + "="*60 + "\nEVALUATION RESULTS\n" + "="*60)
     for name, values in metrics_dict.items(): print(f"\n{name.replace('_', ' ').capitalize()} Score:\n  Mean: {np.mean(values):.4f} ± {np.std(values):.4f}\n  Range: [{np.min(values):.4f}, {np.max(values):.4f}]")
     overall_precision = cm_totals['tp'] / (cm_totals['tp'] + cm_totals['fp']) if (cm_totals['tp'] + cm_totals['fp']) > 0 else 0
@@ -109,7 +253,6 @@ def log_and_plot_results(metrics_dict, cm_totals, save_dir):
 
 # --- Classes are unchanged, but they now accept use_tta as a parameter ---
 class ModelEvaluator:
-    # ... (class is unchanged)
     def __init__(self, model_path):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); print(f"Using device: {self.device}")
         checkpoint = torch.load(model_path, map_location=self.device)
@@ -133,6 +276,98 @@ class ModelEvaluator:
         os.makedirs(eval_dir, exist_ok=True)
         print(f"\nEvaluating model... (TTA: {'Enabled' if use_tta else 'Disabled'}, CRF: {'Enabled' if use_crf else 'Disabled'})")
         print(f"Results will be saved to '{eval_dir}'")
+    def __init__(self, model_path, model_type, config):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Using device: {self.device}")
+        print(f"Model type: {model_type}")
+        print(f"Model path: {model_path}")
+        
+        # Get the appropriate model function
+        get_model_func = get_model_module(model_type)
+        
+        # Try to automatically detect and load the correct model
+        try:
+            self.model, checkpoint = get_model_with_auto_config(
+                config['n_channels'], 
+                config['n_classes'], 
+                model_path,
+                get_model_func
+            )
+            self.model = self.model.to(self.device)
+            self.model.eval()
+            
+            print(f"Loaded model from epoch {checkpoint.get('epoch', 'unknown')}")
+            if 'dice_score' in checkpoint:
+                print(f"Best validation Dice: {checkpoint['dice_score']:.4f}")
+                
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            raise
+
+    def save_prediction_example(self, image, true_mask, pred_mask, prob_mask, dice, iou, idx):
+        """Save visualization of prediction example"""
+        os.makedirs('evaluation_results', exist_ok=True)
+        
+        fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+        
+        # Convert tensors to numpy
+        if image.dim() == 3:
+            img_np = image.permute(1, 2, 0).cpu().numpy()
+        else:
+            img_np = image.squeeze().cpu().numpy()
+            
+        true_mask_np = true_mask.squeeze().cpu().numpy()
+        pred_mask_np = pred_mask.squeeze().cpu().numpy()
+        prob_mask_np = prob_mask.squeeze().cpu().numpy()
+        
+        # Normalize image for display
+        if img_np.max() > 1:
+            img_np = img_np / 255.0
+        img_np = np.clip(img_np, 0, 1)
+        
+        # Original image
+        if img_np.shape[-1] == 3:
+            axes[0].imshow(img_np)
+        else:
+            axes[0].imshow(img_np, cmap='gray')
+        axes[0].set_title('Original Image')
+        axes[0].axis('off')
+        
+        # True mask
+        axes[1].imshow(true_mask_np, cmap='gray')
+        axes[1].set_title('Ground Truth')
+        axes[1].axis('off')
+        
+        # Predicted mask
+        axes[2].imshow(pred_mask_np, cmap='gray')
+        axes[2].set_title(f'Prediction\nDice: {dice:.3f}')
+        axes[2].axis('off')
+        
+        # Probability map
+        im = axes[3].imshow(prob_mask_np, cmap='viridis', vmin=0, vmax=1)
+        axes[3].set_title(f'Probability Map\nIoU: {iou:.3f}')
+        axes[3].axis('off')
+        plt.colorbar(im, ax=axes[3], fraction=0.046, pad=0.04)
+        
+        plt.tight_layout()
+        plt.savefig(f'evaluation_results/example_{idx}.png', dpi=150, bbox_inches='tight')
+        plt.close()
+
+    def evaluate_dataset(self, dataloader, save_examples=True, num_examples=5):
+        """
+        Evaluate model on dataset and compute comprehensive metrics
+        """
+        all_dice = []
+        all_iou = []
+        all_pixel_acc = []
+        all_precision = []
+        all_recall = []
+        all_f1 = []
+        
+        # For confusion matrix
+        all_tp, all_tn, all_fp, all_fn = 0, 0, 0, 0
+        
+        examples_saved = 0
         
         eval_model = self.model
         if use_tta:
@@ -160,7 +395,6 @@ class ModelEvaluator:
         log_and_plot_results(all_metrics, cm_totals, eval_dir)
 
 class EnsembleEvaluator:
-    # ... (class is unchanged)
     def __init__(self, model_path_a, model_path_b):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); print(f"Using device: {self.device}")
         print("\n--- Loading Model A for Ensemble ---"); self.model_a, self.config_a = self._load_model_from_path(model_path_a)
@@ -218,8 +452,7 @@ class EnsembleEvaluator:
                     cm = confusion_matrix_metrics(pred_j, mask_j_gpu); cm_totals['tp'] += cm['TP']; cm_totals['tn'] += cm['TN']; cm_totals['fp'] += cm['FP']; cm_totals['fn'] += cm['FN']
                     if i * dataloader.batch_size + j < num_examples: save_prediction_example(images[j], masks[j], pred_j.cpu(), prob_j, all_metrics['dice'][-1], all_metrics['iou'][-1], i * dataloader.batch_size + j, eval_dir)
         log_and_plot_results(all_metrics, cm_totals, eval_dir)
-
-# --- NEW: main function with fully interactive controls ---
+        
 def main():
     global model_path
     parser = argparse.ArgumentParser(description='Unified Segmentation Model Evaluation')
@@ -282,6 +515,142 @@ def main():
 
     except Exception as e:
         print(f"\nAn error occurred: {e}"); traceback.print_exc()
+        # Calculate overall metrics
+        metrics = {
+            'Dice Score': {
+                'mean': np.mean(all_dice),
+                'std': np.std(all_dice),
+                'min': np.min(all_dice),
+                'max': np.max(all_dice)
+            },
+            'IoU Score': {
+                'mean': np.mean(all_iou),
+                'std': np.std(all_iou),
+                'min': np.min(all_iou),
+                'max': np.max(all_iou)
+            },
+            'Pixel Accuracy': {
+                'mean': np.mean(all_pixel_acc),
+                'std': np.std(all_pixel_acc),
+                'min': np.min(all_pixel_acc),
+                'max': np.max(all_pixel_acc)
+            },
+            'Precision': {
+                'mean': np.mean(all_precision),
+                'std': np.std(all_precision),
+                'min': np.min(all_precision),
+                'max': np.max(all_precision)
+            },
+            'Recall': {
+                'mean': np.mean(all_recall),
+                'std': np.std(all_recall),
+                'min': np.min(all_recall),
+                'max': np.max(all_recall)
+            },
+            'F1 Score': {
+                'mean': np.mean(all_f1),
+                'std': np.std(all_f1),
+                'min': np.min(all_f1),
+                'max': np.max(all_f1)
+            }
+        }
+        
+        # Print comprehensive results
+        print("\n" + "="*60)
+        print("EVALUATION RESULTS")
+        print("="*60)
+        
+        for metric_name, values in metrics.items():
+            print(f"\n{metric_name}:")
+            print(f"  Mean: {values['mean']:.4f} ± {values['std']:.4f}")
+            print(f"  Range: [{values['min']:.4f}, {values['max']:.4f}]")
+        
+        # Overall confusion matrix metrics
+        total_pixels = all_tp + all_tn + all_fp + all_fn
+        overall_accuracy = (all_tp + all_tn) / total_pixels
+        overall_precision = all_tp / (all_tp + all_fp) if (all_tp + all_fp) > 0 else 0
+        overall_recall = all_tp / (all_tp + all_fn) if (all_tp + all_fn) > 0 else 0
+        overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
+        
+        print(f"\nOverall Dataset Metrics:")
+        print(f"  Accuracy: {overall_accuracy:.4f}")
+        print(f"  Precision: {overall_precision:.4f}")
+        print(f"  Recall: {overall_recall:.4f}")
+        print(f"  F1-Score: {overall_f1:.4f}")
+        
+        # Create and save plots
+        self.plot_metrics_distribution(metrics)
+        
+        return metrics
+
+    def plot_metrics_distribution(self, metrics):
+        """Plot distribution of metrics"""
+        os.makedirs('evaluation_results', exist_ok=True)
+        
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        axes = axes.flatten()
+        
+        for i, (metric_name, values) in enumerate(metrics.items()):
+            # Show summary statistics as bar chart
+            ax = axes[i]
+            ax.bar(['Mean', 'Min', 'Max'], 
+                   [values['mean'], values['min'], values['max']],
+                   color=['blue', 'red', 'green'], alpha=0.7)
+            ax.set_title(f'{metric_name}')
+            ax.set_ylim(0, 1)
+            
+            # Add error bar for standard deviation
+            ax.errorbar(['Mean'], [values['mean']], yerr=[values['std']], 
+                       fmt='o', color='black', capsize=5)
+        
+        plt.tight_layout()
+        plt.savefig('evaluation_results/metrics_summary.png', dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        print(f"\nResults saved to 'evaluation_results/' directory")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Evaluate segmentation models')
+    parser.add_argument('--model', type=str, required=True,
+                       choices=['attention', 'unet_enhanced', 'unet'],
+                       help='Model type to evaluate')
+    parser.add_argument('--path', type=str, required=True,
+                       help='Path to the model checkpoint')
+    parser.add_argument('--examples', type=int, default=5,
+                       help='Number of example predictions to save')
+    
+    args = parser.parse_args()
+    
+    # Verify model path exists
+    if not os.path.exists(args.path):
+        print(f"Error: Model path does not exist: {args.path}")
+        return
+    
+    config = {
+        'n_channels': 3,       # RGB images
+        'n_classes': 1,        # binary segmentation
+        'bilinear': True       # This will be auto-detected
+    }
+
+    try:
+        evaluator = ModelEvaluator(
+            model_path=args.path, 
+            model_type=args.model,
+            config=config
+        )
+        metrics = evaluator.evaluate_dataset(
+            test_loader, 
+            save_examples=True, 
+            num_examples=args.examples
+        )
+        
+        print("\nEvaluation completed successfully!")
+        
+    except Exception as e:
+        print(f"Evaluation failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     main()
