@@ -53,6 +53,7 @@ def train_model():
     print("4. U-Net++")
     print("5. AER U-Net")
     print("6. U-Net++ with pre-trained encoder")
+    print("7. SegFormer")
     model_choice = input("Enter your choice (1-6): ")
 
     model_map = {
@@ -61,7 +62,8 @@ def train_model():
         "3": "attention", 
         "4": "unet++", 
         "5": "aer-unet",
-        "6": "unet++-pretrained-encoder"
+        "6": "unet++-pretrained-encoder",
+        "7": "segformer-b4"
     }
     model = model_map.get(model_choice)
 
@@ -71,7 +73,10 @@ def train_model():
 
     print("\nEnter training parameters (press Enter to use default values):")
     num_epochs = input("Number of epochs (default: 50): ") or "50"
-    learning_rate = input("Learning rate (default: 1e-4): ") or "1e-4"
+    if model == "segformer-b4":
+        learning_rate = input("Learning rate (default: 5e-5): ") or "5e-5"
+    else:
+        learning_rate = input("Learning rate (default: 1e-4): ") or "1e-4"
     batch_size = input("Batch size (default: 16): ") or "16"
     loss_type = input("Loss type (e.g., combined, lovasz, focal_lovasz; default: combined): ") or "combined"
     command = f"python3 train.py --model {model} --num_epochs {num_epochs} --learning_rate {learning_rate} --batch_size {batch_size} --loss_type {loss_type}"
@@ -82,13 +87,13 @@ def train_model():
         lovasz_weight = input("Lovasz loss weight (default: 0.5): ") or "0.5"
         command += f" --focal_weight {focal_weight} --lovasz_weight {lovasz_weight}"
 
-    if model in ["enhanced", "attention", "unet++", "aer-unet"]:
-        if input("Use mixed precision (AMP)? (Y/n): ").lower() != 'n':
-            command += " --use_amp"
+    #if model in ["enhanced", "attention", "unet++", "aer-unet"]:
+    if input("Use mixed precision (AMP)? (Y/n): ").lower() != 'n':
+        command += " --use_amp"
         
-        if model == 'unet++':
-            if input("Use deep supervision? (Y/n): ").lower() != 'n':
-                command += " --deep_supervision"
+    if model in ["unet++","unet++-pretrained-encoder"]:
+        if input("Use deep supervision? (Y/n): ").lower() != 'n':
+            command += " --deep_supervision"
 
     if input("Use early stopping? (Y/n): ").lower() != 'n':
         command += " --early_stopping"
@@ -100,28 +105,12 @@ def train_model():
     run_command(command)
     print("\n--- Model Training Finished ---")
 
-# --- MODIFIED: The evaluate_model function is now interactive ---
 def evaluate_model():
     """
-    Launches the interactive evaluation script, asking the user if they
-    want to use CRF post-processing.
+    Launches the fully interactive evaluation script.
     """
-    print("\n--- Launching Interactive Evaluation ---")
-    
-    # The evaluation script itself is interactive for model selection.
-    # We add an interactive prompt here for the CRF option.
-    use_crf_choice = input("Use CRF post-processing to refine masks? (Y/n): ").lower()
-    
-    if use_crf_choice != 'n':
-        # If user inputs 'y', 'yes', or just presses Enter
-        command = "python3 evaluate.py --use_crf"
-        print("CRF enabled.")
-    else:
-        # If user inputs 'n' or 'no'
-        command = "python3 evaluate.py"
-        print("CRF disabled.")
-
-    print(f"\nExecuting command: {command}\n")
+    print("\n--- Launching Interactive Evaluation Script ---")
+    command = "python3 evaluate.py"
     run_command(command)
     print("\n--- Evaluation Finished ---")
 

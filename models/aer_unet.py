@@ -1,33 +1,30 @@
 # models/aer_unet.py
 """
-Implementation of AER U-Net (Attention-Enhanced Multi-Scale Residual U-Net)
-Corrected to use a memory-efficient Attention Gate mechanism.
+Implementation of AER U-Net (Attention-Enhanced Multi-Scale Residual U-Net).
+This version is modified to precisely match the architecture described in the
+reference paper (Table 2): 3 encoder/decoder levels.
 """
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# --- NEW: Memory-Efficient Attention Gate ---
 class AttentionGate(nn.Module):
     """
     Attention Gate (AG) for U-Net to focus on relevant structures.
-    This is a more memory-efficient approach than the previous SelfAttention block.
+    This implementation matches the paper's description.
     """
     def __init__(self, F_g, F_l, F_int):
         super(AttentionGate, self).__init__()
-        # Convolution for the gating signal (from the decoder)
         self.W_g = nn.Sequential(
             nn.Conv2d(F_g, F_int, kernel_size=1, stride=1, padding=0, bias=True),
             nn.BatchNorm2d(F_int)
         )
         
-        # Convolution for the skip-connection signal (from the encoder)
         self.W_x = nn.Sequential(
             nn.Conv2d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
             nn.BatchNorm2d(F_int)
         )
         
-        # Final convolution to produce the attention coefficients
         self.psi = nn.Sequential(
             nn.Conv2d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
             nn.BatchNorm2d(1),
@@ -37,21 +34,17 @@ class AttentionGate(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, g, x):
-        # Process the gating signal (g) and the skip-connection (x)
         g1 = self.W_g(g)
         x1 = self.W_x(x)
-        
-        # Combine the signals and apply activation
         psi = self.relu(g1 + x1)
-        
-        # Generate the attention map (alpha)
         psi = self.psi(psi)
-
-        # Multiply the skip-connection with the attention map to suppress irrelevant regions
         return x * psi
 
 class ResidualBlock(nn.Module):
-    """A residual block with two convolutional layers."""
+    """
+    A residual block with two convolutional layers.
+    This implementation matches the paper's description.
+    """
     def __init__(self, in_channels, out_channels, dropout_rate=0.1):
         super(ResidualBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False)
@@ -77,60 +70,57 @@ class ResidualBlock(nn.Module):
         out = self.relu(out)
         return out
 
+# --- NEW: AERUNet class rewritten to match the paper's Table 2 ---
 class AERUNet(nn.Module):
-    def __init__(self, n_channels, n_classes, base_features=64, dropout_rate=0.1):
+    def __init__(self, n_channels, n_classes, base_features=32, dropout_rate=0.3):
         super(AERUNet, self).__init__()
         
-        # Encoder
+        # --- SHALLOWER ENCODER (3 levels) ---
+        # Encoder Level 1: 32 filters
         self.enc1 = ResidualBlock(n_channels, base_features, dropout_rate)
         self.pool1 = nn.MaxPool2d(2)
-        self.enc2 = ResidualBlock(base_features, base_features*2, dropout_rate)
+        
+        # Encoder Level 2: 64 filters
+        self.enc2 = ResidualBlock(base_features, base_features * 2, dropout_rate)
         self.pool2 = nn.MaxPool2d(2)
-        self.enc3 = ResidualBlock(base_features*2, base_features*4, dropout_rate)
+        
+        # Encoder Level 3: 128 filters
+        self.enc3 = ResidualBlock(base_features * 2, base_features * 4, dropout_rate)
         self.pool3 = nn.MaxPool2d(2)
-        self.enc4 = ResidualBlock(base_features*4, base_features*8, dropout_rate)
-        self.pool4 = nn.MaxPool2d(2)
 
-        # Bottleneck
-        self.bottleneck = ResidualBlock(base_features*8, base_features*16, dropout_rate)
+        # --- BOTTLENECK (256 filters) ---
+        self.bottleneck = ResidualBlock(base_features * 4, base_features * 8, dropout_rate)
         
-        # Decoder
-        self.up4 = nn.ConvTranspose2d(base_features*16, base_features*8, kernel_size=2, stride=2)
-        self.attn4 = AttentionGate(F_g=base_features*8, F_l=base_features*8, F_int=base_features*4)
-        self.dec4 = ResidualBlock(base_features*16, base_features*8, dropout_rate)
+        # --- SHALLOWER DECODER (3 levels) ---
+        # Decoder Level 3 (Input: 256 filters, Output: 128 filters)
+        self.up3 = nn.ConvTranspose2d(base_features * 8, base_features * 4, kernel_size=2, stride=2)
+        self.attn3 = AttentionGate(F_g=base_features * 4, F_l=base_features * 4, F_int=base_features * 2)
+        self.dec3 = ResidualBlock(base_features * 8, base_features * 4, dropout_rate)
 
-        self.up3 = nn.ConvTranspose2d(base_features*8, base_features*4, kernel_size=2, stride=2)
-        self.attn3 = AttentionGate(F_g=base_features*4, F_l=base_features*4, F_int=base_features*2)
-        self.dec3 = ResidualBlock(base_features*8, base_features*4, dropout_rate)
-
-        self.up2 = nn.ConvTranspose2d(base_features*4, base_features*2, kernel_size=2, stride=2)
-        self.attn2 = AttentionGate(F_g=base_features*2, F_l=base_features*2, F_int=base_features)
-        self.dec2 = ResidualBlock(base_features*4, base_features*2, dropout_rate)
+        # Decoder Level 2 (Input: 128 filters, Output: 64 filters)
+        self.up2 = nn.ConvTranspose2d(base_features * 4, base_features * 2, kernel_size=2, stride=2)
+        self.attn2 = AttentionGate(F_g=base_features * 2, F_l=base_features * 2, F_int=base_features)
+        self.dec2 = ResidualBlock(base_features * 4, base_features * 2, dropout_rate)
         
-        self.up1 = nn.ConvTranspose2d(base_features*2, base_features, kernel_size=2, stride=2)
-        self.attn1 = AttentionGate(F_g=base_features, F_l=base_features, F_int=base_features//2)
-        self.dec1 = ResidualBlock(base_features*2, base_features, dropout_rate)
+        # Decoder Level 1 (Input: 64 filters, Output: 32 filters)
+        self.up1 = nn.ConvTranspose2d(base_features * 2, base_features, kernel_size=2, stride=2)
+        self.attn1 = AttentionGate(F_g=base_features, F_l=base_features, F_int=base_features // 2)
+        self.dec1 = ResidualBlock(base_features * 2, base_features, dropout_rate)
 
-        # Output Layer
+        # --- OUTPUT LAYER ---
         self.out_conv = nn.Conv2d(base_features, n_classes, kernel_size=1)
 
     def forward(self, x):
-        # Encoder
+        # Encoder path
         e1 = self.enc1(x)
         e2 = self.enc2(self.pool1(e1))
         e3 = self.enc3(self.pool2(e2))
-        e4 = self.enc4(self.pool3(e3))
 
         # Bottleneck
-        b = self.bottleneck(self.pool4(e4))
+        b = self.bottleneck(self.pool3(e3))
         
-        # Decoder with Attention Gates
-        d4 = self.up4(b)
-        e4_attn = self.attn4(g=d4, x=e4)
-        d4 = torch.cat((e4_attn, d4), dim=1)
-        d4 = self.dec4(d4)
-        
-        d3 = self.up3(d4)
+        # Decoder path with Attention Gates
+        d3 = self.up3(b)
         e3_attn = self.attn3(g=d3, x=e3)
         d3 = torch.cat((e3_attn, d3), dim=1)
         d3 = self.dec3(d3)
@@ -147,9 +137,9 @@ class AERUNet(nn.Module):
 
         return self.out_conv(d1)
 
-def get_aer_unet_model(n_channels=3, n_classes=1, base_features=64, dropout_rate=0.1):
+def get_aer_unet_model(n_channels=3, n_classes=1, base_features=32, dropout_rate=0.3):
     """
-    Factory function to create an AER U-Net model.
+    Factory function to create an AER U-Net model with defaults matching the paper.
     """
     return AERUNet(
         n_channels=n_channels,

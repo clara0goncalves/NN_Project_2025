@@ -27,6 +27,7 @@ from models.unet_enhanced import get_enhanced_model
 from models.attention import get_attention_model
 from models.unet_plus_plus import get_unet_plus_plus_model
 from models.aer_unet import get_aer_unet_model
+from models.segformer import get_segformer_model
 
 from utils.data_utils import WaterBodiesDataset
 from utils.metrics import dice_score, iou_score
@@ -97,6 +98,11 @@ class Trainer:
                 in_channels=config['n_channels'],
                 classes=config['n_classes'],
             )
+        elif model_type == 'segformer-b4':
+            print("Initializing SegFormer-B4 model pre-trained on ADE20K.")
+            return get_segformer_model(
+                n_classes=config['n_classes']
+            )
         elif model_type == 'unet':
             return get_basic_model(
                 n_channels=config['n_channels'],
@@ -133,7 +139,8 @@ class Trainer:
             return get_aer_unet_model(
                 n_channels=config['n_channels'],
                 n_classes=config['n_classes'],
-                base_features=config['base_features']
+                base_features=config['base_features'],
+                dropout_rate=config['dropout_rate']
             )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
@@ -358,6 +365,12 @@ class Trainer:
             torch.save(checkpoint, os.path.join(self.checkpoint_dir, 'best.pth'))
             print(f"New best model saved with IoU: {val_iou:.4f}")
 
+        save_interval = 20
+        if epoch > 0 and epoch % save_interval == 0:
+            periodic_path = os.path.join(self.checkpoint_dir, f'epoch_{epoch}.pth')
+            torch.save(checkpoint, periodic_path)
+            print(f"Saved periodic checkpoint at epoch {epoch} to '{periodic_path}'")
+
     def _plot_and_save_history(self):
         """
         Plots training metrics and saves the history, including all hyperparameters, to a CSV file.
@@ -442,6 +455,9 @@ class Trainer:
                 self.patience_counter = 0
             else:
                 self.patience_counter += 1
+
+            if self.config.get('early_stopping', False):
+                print(f"Patience: {self.patience_counter} / {self.config['early_stopping_patience']}")
             
             self.save_checkpoint(epoch, val_loss, val_iou, is_best)
             
@@ -458,7 +474,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Unified U-Net Training Script')
     
     parser.add_argument('--model', type=str, 
-                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder'],
+                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder', 'segformer-b4'],
                         default='unet', 
                         help='Model architecture to use')
     parser.add_argument('--n_channels', type=int, default=3, help='Number of input channels')
@@ -480,6 +496,7 @@ def parse_args():
                         choices=['bce', 'dice', 'combined', 'focal', 'tversky', 'lovasz', 'focal_lovasz'], # Add 'focal_lovasz' and 'lovasz'
                         default='combined', 
                         help='Loss function type')
+    parser.add_argument('--dropout_rate', type=float, default=0.3, help='Dropout rate for models that support it (AER-UNet)')
     parser.add_argument('--focal_weight', type=float, default=0.5, help='Weight for Focal Loss in FocalLovaszLoss')
     parser.add_argument('--lovasz_weight', type=float, default=0.5, help='Weight for Lovasz Loss in FocalLovaszLoss')
     parser.add_argument('--use_amp', action='store_true', help='Use automatic mixed precision')

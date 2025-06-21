@@ -38,12 +38,12 @@ def apply_crf(image, prob_map):
     # 3. Add a pairwise bilateral term
     # This considers both color and position, using the corrected `chdim` argument.
     pairwise_bilateral = create_pairwise_bilateral(
-        sdims=(80, 80),
+        sdims=(10, 10),
         schan=(13, 13, 13),
         img=image,
         chdim=2  # The key fix from your example
     )
-    d.addPairwiseEnergy(pairwise_bilateral, compat=10)
+    d.addPairwiseEnergy(pairwise_bilateral, compat=3)
 
     # 4. Add a pairwise Gaussian term
     # This acts as a smoothing filter, considering only position.
@@ -51,7 +51,7 @@ def apply_crf(image, prob_map):
         sdims=(3, 3),
         shape=(w, h)
     )
-    d.addPairwiseEnergy(pairwise_gaussian, compat=3)
+    d.addPairwiseEnergy(pairwise_gaussian, compat=1)
 
     # 5. Run CRF inference
     Q = d.inference(5)  # Run 5 inference steps
