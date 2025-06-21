@@ -37,6 +37,7 @@ from models.attention import get_attention_model
 from models.unet_plus_plus import get_unet_plus_plus_model
 from models.aer_unet import get_aer_unet_model
 from models.segformer import get_segformer_model
+from models.new_unet import get_new_unet_model
 
 from utils.data_utils import WaterBodiesDataset
 from utils.metrics import dice_score, iou_score
@@ -118,6 +119,11 @@ class Trainer:
         elif model_type == 'segformer-b4':
             print("Initializing SegFormer-B4 model pre-trained on ADE20K.")
             return get_segformer_model(
+                n_classes=config['n_classes']
+            )
+        elif model_type == 'new-unet':
+            return get_new_unet_model(
+                n_channels=config['n_channels'],
                 n_classes=config['n_classes']
             )
         elif model_type == 'unet':
@@ -538,7 +544,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Unified U-Net Training Script')
     
     parser.add_argument('--model', type=str, 
-                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder', 'segformer-b4'],
+                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder', 'segformer-b4', 'new-unet'],
                         default='unet', 
                         help='Model architecture to use')
     parser.add_argument('--n_channels', type=int, default=3, help='Number of input channels')

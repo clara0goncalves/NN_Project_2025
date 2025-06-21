@@ -54,7 +54,8 @@ def train_model():
     print("5. AER U-Net")
     print("6. U-Net++ with pre-trained encoder")
     print("7. SegFormer")
-    model_choice = input("Enter your choice (1-6): ")
+    print("8. New U-Net")
+    model_choice = input("Enter your choice (1-8): ")
 
     model_map = {
         "1": "unet", 
