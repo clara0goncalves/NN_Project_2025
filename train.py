@@ -393,9 +393,6 @@ class Trainer:
                         outputs = outputs[-1]
                     else:
                         loss = self.criterion(outputs, masks)
-                else:
-                    outputs = self.model(images)
-                    loss = self.criterion(outputs, masks)
                 
                 probs = torch.sigmoid(outputs)
                 dice = dice_score(probs > 0.5, masks)
@@ -530,13 +527,7 @@ class Trainer:
         
         print(f"Training completed. Best IoU Score: {self.best_iou:.4f}")
             
-            self.save_checkpoint(epoch, val_loss, val_iou, is_best)
-            
-            # Early stopping
-            if self.config.get('early_stopping', False):
-                if self.patience_counter >= self.config['early_stopping_patience']:
-                    print(f"Early stopping at epoch {epoch} (patience: {self.patience_counter})")
-                    break
+        self.save_checkpoint(epoch, val_loss, val_iou, is_best)
         
         print(f"Training completed. Best Dice Score: {self.best_iou:.4f}")
         self.writer.close()

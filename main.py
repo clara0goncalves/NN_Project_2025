@@ -63,7 +63,8 @@ def train_model():
         "4": "unet++", 
         "5": "aer-unet",
         "6": "unet++-pretrained-encoder",
-        "7": "segformer-b4"
+        "7": "segformer-b4",
+        "8": "new-unet"
     }
     model = model_map.get(model_choice)
 
