@@ -35,13 +35,16 @@ class FocalLoss(nn.Module):
         self.smooth = smooth
     
     def forward(self, pred, target):
-        pred = torch.sigmoid(pred)
-        pred = pred.contiguous().view(-1)
-        target = target.contiguous().view(-1)
+        # NOTE: The 'pred' input is the raw logits from the model, NOT the sigmoid output
+        
+        # We use the numerically stable 'binary_cross_entropy_with_logits'
+        bce = F.binary_cross_entropy_with_logits(pred, target, reduction='none')
+        
+        # To get pt, we still need the probabilities, so we apply sigmoid here just for that
+        pred_prob = torch.sigmoid(pred)
+        pt = torch.where(target == 1, pred_prob, 1 - pred_prob)
         
         # Calculate focal loss
-        bce = F.binary_cross_entropy(pred, target, reduction='none')
-        pt = torch.where(target == 1, pred, 1 - pred)
         focal_loss = self.alpha * (1 - pt) ** self.gamma * bce
         
         return focal_loss.mean()

@@ -40,11 +40,45 @@ def visualize_dataset():
     run_command(command)
     print("\n--- Dataset Visualization Finished ---")
 
-def train_model():
+def generate_pseudo_labels():
+    """
+    Runs the script to generate new labels using the ensemble model.
+    """
+    print("\n--- Generating High-Quality Pseudo-Labels with Ensemble ---")
+    command = "python3 generate_ensemble_pseudo_labels.py"
+    print("This may take some time as it runs inference over the entire training set...")
+    run_command(command)
+    print("\n--- Pseudo-Label Generation Finished ---")
+    print("Cleaned masks should now be in 'datasets/train_cleaned_masks'.")
+
+def train_on_cleaned_data():
+    """
+    Launches the training process pointed at the cleaned dataset.
+    """
+    print("\n--- Starting Training on Cleaned (Pseudo-Labeled) Dataset ---")
+    print("This will be similar to a normal training run, but will use the new golden labels.")
+
+    # This function will call the standard train_model function,
+    # but will pass an extra argument to the command.
+    # We can achieve this by modifying the train_model function slightly.
+    # For simplicity, we will create a dedicated command here.
+
+    # NOTE: This duplicates the interactive logic from train_model. 
+    # A more advanced implementation might refactor train_model to accept a dataset path.
+    # But this approach is clear and works well.
+
+    # Let's reuse the train_model function but with a flag.
+    train_model(use_cleaned_dataset=True)
+
+def train_model(use_cleaned_dataset=False):
     """
     Guides the user through the process of training a model.
+    Can be pointed to the cleaned dataset via a flag.
     """
-    print("\n--- Train a New Model ---")
+    if use_cleaned_dataset:
+        print("\n--- Train a New Model on the CLEANED Dataset ---")
+    else:
+        print("\n--- Train a New Model on the Original Dataset ---")
 
     print("Select a model to train:")
     print("1. Basic U-Net")
@@ -101,6 +135,15 @@ def train_model():
     if input("Use gradient clipping? (Y/n): ").lower() != 'n':
         command += " --gradient_clipping"
 
+    if use_cleaned_dataset:
+        # Assumes your original images are in train/images
+        # and your new masks are in train_cleaned_masks
+        # We need a new data loader setup for this. Let's create a combined dir.
+        # A better way is to pass both paths to the data loader.
+        # Assuming your `get_data_loaders` can handle this:
+        command += " --train_dir datasets/train_golden" # Example name
+        print("\nINFO: Using cleaned dataset from 'datasets/train_golden'")
+
     print(f"\nExecuting command: {command}\n")
     run_command(command)
     print("\n--- Model Training Finished ---")
@@ -125,36 +168,39 @@ def install_requirements():
 
 def main_menu():
     """
-    Displays the main menu and handles user input.
+    Displays the main interactive menu to the user.
     """
     while True:
         print("\n=====================")
         print("  Interactive Menu")
         print("=====================")
-        print("1. Prepare Data")
-        print("2. Visualize Dataset")
-        print("3. Train a New Model")
-        print("4. Evaluate a Trained Model")
-        print("5. Install/Update Requirements")
-        print("6. Exit")
-        
-        choice = input("\nEnter your choice (1-6): ")
+        print("1. Prepare Data (Split Raw Dataset)")
+        print("2. Generate Pseudo-Labels (Clean the Dataset)")
+        print("3. Train on Original Dataset")
+        print("4. Train on Cleaned (Pseudo-Labeled) Dataset")
+        print("5. Evaluate a Model")
+        print("6. Install/Update Requirements")
+        print("7. Exit")
+
+        choice = input("\nEnter your choice (1-7): ")
 
         if choice == "1":
-            prepare_data()
+            prepare_data() 
         elif choice == "2":
-            visualize_dataset()
+            generate_pseudo_labels()
         elif choice == "3":
-            train_model()
+            train_model(use_cleaned_dataset=False)
         elif choice == "4":
-            evaluate_model()
+            train_on_cleaned_data()
         elif choice == "5":
-            install_requirements()
+            evaluate_model()
         elif choice == "6":
+            install_requirements()
+        elif choice == "7":
             print("Exiting the program. Goodbye!")
             break
         else:
-            print("Invalid choice. Please enter a number between 1 and 6.")
+            print("Invalid choice. Please enter a number between 1 and 7.")
 
 if __name__ == "__main__":
     main_menu()

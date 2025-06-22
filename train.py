@@ -50,7 +50,7 @@ from utils.metrics import dice_score, iou_score
 from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss, FocalLovaszLoss
 
 # Assuming your data loaders are prepared by this script
-from src.preprocessing.prepare_data import train_loader, val_loader, test_loader
+from prepare_data import get_data_loaders
 
 class Trainer:
     def __init__(self, config):
@@ -89,9 +89,9 @@ class Trainer:
         self.use_amp = (config.get('use_amp', False) and torch.cuda.is_available())
 
         if self.use_amp:
-            self.scaler = GradScaler()
+            self.scaler = torch.cuda.amp.GradScaler()
             print("Using Automatic Mixed Precision (AMP)")
-        
+            
         # Save config
         with open(os.path.join(self.checkpoint_dir, 'config.json'), 'w') as f:
             json.dump(config, f, indent=2)
@@ -275,7 +275,7 @@ class Trainer:
 
             # Single, unified block for forward/backward pass
             if self.use_amp:
-                with autocast():
+                with torch.cuda.amp.autocast():
                     outputs = self.model(images)
                     # Handle deep supervision if model returns a list of outputs
                     if isinstance(outputs, list):
@@ -539,7 +539,12 @@ def parse_args():
     parser.add_argument('--gradient_clipping', action='store_true', help='Enable gradient clipping')
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Max gradient norm')
     parser.add_argument('--experiment_name', type=str, default=None, help='Custom experiment name')
-    
+    parser.add_argument('--train_dir', type=str, default='datasets/train', 
+                        help='Path to the training dataset directory')
+    parser.add_argument('--val_dir', type=str, default='datasets/val', 
+                        help='Path to the validation dataset directory')
+
+
     return parser.parse_args()
 
 def main():
@@ -558,11 +563,17 @@ def main():
     
     trainer = Trainer(config)
     
-    # Adjust dataloaders based on training batch size
-    train_loader_adj = DataLoader(train_loader.dataset, batch_size=config['batch_size'], shuffle=True, num_workers=4, pin_memory=True)
-    val_loader_adj = DataLoader(val_loader.dataset, batch_size=config['batch_size'], shuffle=False, num_workers=4, pin_memory=True)
+    print(f"Loading training data from: {config['train_dir']}")
+    print(f"Loading validation data from: {config['val_dir']}")
 
-    trainer.train(train_loader_adj, val_loader_adj, config['num_epochs'])
+    train_loader, val_loader, _ = get_data_loaders(
+        train_dir=config['train_dir'],
+        val_dir=config['val_dir'],
+        batch_size=config['batch_size'],
+        num_workers=4 # Or get from config
+    )
+
+    trainer.train(train_loader, val_loader, config['num_epochs'])
 
 if __name__ == "__main__":
     main()
