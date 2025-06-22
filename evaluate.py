@@ -35,7 +35,6 @@ from models.attention import get_attention_model
 from models.unet_plus_plus import get_unet_plus_plus_model
 from models.aer_unet import get_aer_unet_model
 from models.segformer import get_segformer_model
-from models.new_unet import get_new_unet_model
 
 import segmentation_models_pytorch as smp
 
@@ -58,7 +57,6 @@ def get_model_from_name(model_name):
         'unet-resnet34': get_smp_unet_resnet34,
         'unet++-pretrained-encoder': get_smp_unet_plus_plus_effnetb4,
         'segformer-b4': get_segformer_model,
-        'new-unet': get_new_unet_model,
     }
     if model_name == "unet_enhanced": model_name = "enhanced"
     if model_name not in model_map:

@@ -29,6 +29,13 @@ import matplotlib.pyplot as plt
 import segmentation_models_pytorch as smp
 import seaborn as sns
 import segmentation_models_pytorch.losses as smp_losses
+import sys
+
+# Ensure the project root is in the Python path
+# Adjust this path if your project structure is different
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 # Model imports
 from models.unet import get_model as get_basic_model
@@ -37,25 +44,12 @@ from models.attention import get_attention_model
 from models.unet_plus_plus import get_unet_plus_plus_model
 from models.aer_unet import get_aer_unet_model
 from models.segformer import get_segformer_model
-from models.new_unet import get_new_unet_model
 
 from utils.data_utils import WaterBodiesDataset
 from utils.metrics import dice_score, iou_score
 from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss, FocalLovaszLoss
 
-# Model imports - adjust these based on your actual model files
-from models.unet import get_model as get_basic_model
-from models.unet_enhanced import get_enhanced_model
-from models.attention import get_attention_model
-
-from utils.data_utils import WaterBodiesDataset
-from utils.metrics import dice_score, iou_score
-from utils.losses import DiceLoss, CombinedLoss, FocalLoss, TverskyLoss
-import sys
-
-# Ensure the project root is in the Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
+# Assuming your data loaders are prepared by this script
 from src.preprocessing.prepare_data import train_loader, val_loader, test_loader
 
 class Trainer:
@@ -92,9 +86,7 @@ class Trainer:
         self.scheduler = self._get_scheduler(config)
         
         # Mixed precision training
-        self.use_amp = (config.get('use_amp', False) and 
-                       torch.cuda.is_available() and 
-                       config['model_type'] in ['enhanced', 'attention', 'unet++', 'aer-unet'])
+        self.use_amp = (config.get('use_amp', False) and torch.cuda.is_available())
 
         if self.use_amp:
             self.scaler = GradScaler()
@@ -109,7 +101,7 @@ class Trainer:
         model_type = config['model_type']
         
         if model_type == 'unet++-pretrained-encoder':
-            print("Initializing U-Net with pre-trained efficientnet64 encoder.")
+            print("Initializing U-Net++ with pre-trained efficientnet-b4 encoder.")
             return smp.UnetPlusPlus(
                 encoder_name="efficientnet-b4",
                 encoder_weights="imagenet",
@@ -119,11 +111,6 @@ class Trainer:
         elif model_type == 'segformer-b4':
             print("Initializing SegFormer-B4 model pre-trained on ADE20K.")
             return get_segformer_model(
-                n_classes=config['n_classes']
-            )
-        elif model_type == 'new-unet':
-            return get_new_unet_model(
-                n_channels=config['n_channels'],
                 n_classes=config['n_classes']
             )
         elif model_type == 'unet':
@@ -228,7 +215,6 @@ class Trainer:
                 mode='min',
                 patience=config['scheduler_patience'],
                 factor=config['scheduler_factor'],
-                verbose=True
             )
         elif config['scheduler_type'] == 'cosine':
             return optim.lr_scheduler.CosineAnnealingLR(
@@ -265,13 +251,8 @@ class Trainer:
         if self.config['model_type'] in ['enhanced', 'attention']:
             print(f"  Encoder dropout: {self.config['encoder_dropout']}")
             print(f"  Bottleneck dropout: {self.config['bottleneck_dropout']}")
-        if self.config['model_type'] == 'unet++':
+        if self.config['model_type'] in ['unet++', 'unet++-pretrained-encoder']:
             print(f"  Deep Supervision: {self.config.get('deep_supervision', False)}")
-        
-        if self.config['model_type'] in ['enhanced', 'attention']:
-            print(f"  Base features: {self.config['base_features']}")
-            print(f"  Encoder dropout: {self.config['encoder_dropout']}")
-            print(f"  Bottleneck dropout: {self.config['bottleneck_dropout']}")
         
         # Log to tensorboard
         self.writer.add_text('Model/Type', self.config['model_type'])
@@ -289,65 +270,44 @@ class Trainer:
             images, masks = images.to(self.device), masks.to(self.device)
             
             self.optimizer.zero_grad()
-           
+            
+            final_outputs = None # To store the tensor for metric calculation
+
+            # Single, unified block for forward/backward pass
             if self.use_amp:
                 with autocast():
                     outputs = self.model(images)
+                    # Handle deep supervision if model returns a list of outputs
                     if isinstance(outputs, list):
                         loss = sum(self.criterion(o, masks) for o in outputs)
-                        outputs = outputs[-1] 
+                        final_outputs = outputs[-1]
                     else:
                         loss = self.criterion(outputs, masks)
+                        final_outputs = outputs
+                
                 self.scaler.scale(loss).backward()
                 if self.config.get('gradient_clipping', False):
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.get('max_grad_norm', 1.0))
-            # Forward pass with optional mixed precision
-            if self.use_amp:
-                with autocast():
-                    outputs = self.model(images)
-                    loss = self.criterion(outputs, masks)
-                
-                # Mixed precision backward pass
-                self.scaler.scale(loss).backward()
-                
-                # Gradient clipping if enabled
-                if self.config.get('gradient_clipping', False):
-                    self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), 
-                        self.config.get('max_grad_norm', 1.0)
-                    )
-                
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
-            else:
+            else: # Standard (non-AMP) training
                 outputs = self.model(images)
                 if isinstance(outputs, list):
                     loss = sum(self.criterion(o, masks) for o in outputs)
-                    outputs = outputs[-1]
+                    final_outputs = outputs[-1]
                 else:
                     loss = self.criterion(outputs, masks)
+                    final_outputs = outputs
+                
                 loss.backward()
                 if self.config.get('gradient_clipping', False):
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.get('max_grad_norm', 1.0))
                 self.optimizer.step()
-            
-                loss = self.criterion(outputs, masks)
-                loss.backward()
-                
-                # Gradient clipping if enabled
-                if self.config.get('gradient_clipping', False):
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.config.get('max_grad_norm', 1.0)
-                    )
-                
-                self.optimizer.step()
-            
+
             # Metrics calculation
             with torch.no_grad():
-                probs = torch.sigmoid(outputs)
+                probs = torch.sigmoid(final_outputs)
                 dice = dice_score(probs > 0.5, masks)
                 iou = iou_score(probs > 0.5, masks)
             
@@ -355,7 +315,6 @@ class Trainer:
             total_dice += dice.item()
             total_iou += iou.item()
             
-            pbar.set_postfix({'Loss': f'{loss.item():.4f}', 'Dice': f'{dice.item():.4f}', 'IoU': f'{iou.item():.4f}', 'LR': f'{self.optimizer.param_groups[0]["lr"]:.2e}'})
             # Update progress bar
             pbar.set_postfix({
                 'Loss': f'{loss.item():.4f}',
@@ -384,6 +343,8 @@ class Trainer:
             for images, masks in pbar:
                 images, masks = images.to(self.device), masks.to(self.device)
                 
+                outputs = None # To store the tensor for metric calculation
+
                 if self.use_amp:
                     with autocast():
                         outputs = self.model(images)
@@ -423,7 +384,7 @@ class Trainer:
             'config': self.config
         }
         
-        if self.use_amp:
+        if self.use_amp and hasattr(self, 'scaler'):
             checkpoint['scaler_state_dict'] = self.scaler.state_dict()
         
         torch.save(checkpoint, os.path.join(self.checkpoint_dir, 'latest.pth'))
@@ -431,7 +392,8 @@ class Trainer:
         if is_best:
             torch.save(checkpoint, os.path.join(self.checkpoint_dir, 'best.pth'))
             print(f"New best model saved with IoU: {val_iou:.4f}")
-        save_interval = 20
+
+        save_interval = self.config.get('save_interval', 20)
         if epoch > 0 and epoch % save_interval == 0:
             periodic_path = os.path.join(self.checkpoint_dir, f'epoch_{epoch}.pth')
             torch.save(checkpoint, periodic_path)
@@ -441,15 +403,19 @@ class Trainer:
         """
         Plots training metrics and saves the history, including all hyperparameters, to a CSV file.
         """
+        if not self.history:
+            print("No history to plot or save.")
+            return
+
         history_df = pd.DataFrame(self.history)
         
         for key, value in self.config.items():
-            history_df[key] = value
+            if key not in history_df.columns:
+                history_df[key] = value
 
         csv_path = os.path.join(self.checkpoint_dir, 'training_history.csv')
         history_df.to_csv(csv_path, index=False)
         
-        # --- FIX: Use the modern seaborn function for styling ---
         sns.set_theme(style="darkgrid")
         
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
@@ -481,7 +447,9 @@ class Trainer:
     def train(self, train_loader, val_loader, num_epochs):
         print(f"Starting training for {num_epochs} epochs")
         
+        last_epoch = 0
         for epoch in range(1, num_epochs + 1):
+            last_epoch = epoch
             train_loss, train_dice, train_iou = self.train_epoch(train_loader, epoch)
             val_loss, val_dice, val_iou = self.validate_epoch(val_loader, epoch)
             
@@ -532,10 +500,6 @@ class Trainer:
                 break
         
         print(f"Training completed. Best IoU Score: {self.best_iou:.4f}")
-            
-        self.save_checkpoint(epoch, val_loss, val_iou, is_best)
-        
-        print(f"Training completed. Best Dice Score: {self.best_iou:.4f}")
         self.writer.close()
         
         self._plot_and_save_history()
@@ -544,7 +508,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Unified U-Net Training Script')
     
     parser.add_argument('--model', type=str, 
-                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder', 'segformer-b4', 'new-unet'],
+                        choices=['unet', 'enhanced', 'attention', 'unet++', 'aer-unet', 'unet++-pretrained-encoder', 'segformer-b4'],
                         default='unet', 
                         help='Model architecture to use')
     parser.add_argument('--n_channels', type=int, default=3, help='Number of input channels')
@@ -563,7 +527,7 @@ def parse_args():
     parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for plateau scheduler')
     parser.add_argument('--scheduler_factor', type=float, default=0.5, help='Factor for plateau scheduler')
     parser.add_argument('--loss_type', type=str, 
-                        choices=['bce', 'dice', 'combined', 'focal', 'tversky', 'lovasz', 'focal_lovasz'], # Add 'focal_lovasz' and 'lovasz'
+                        choices=['bce', 'dice', 'combined', 'focal', 'tversky', 'lovasz', 'focal_lovasz'],
                         default='combined', 
                         help='Loss function type')
     parser.add_argument('--dropout_rate', type=float, default=0.3, help='Dropout rate for models that support it (AER-UNet)')
@@ -578,7 +542,6 @@ def parse_args():
     
     return parser.parse_args()
 
-
 def main():
     args = parse_args()
     
@@ -591,8 +554,6 @@ def main():
 
     print("Training Configuration:")
     for key, value in config.items():
-        if key in ['base_features', 'encoder_dropout', 'bottleneck_dropout', 'deep_supervision'] and config['model_type'] not in ['enhanced', 'attention', 'unet++', 'aer-unet']:
-            continue
         print(f"  {key.replace('_', ' ').capitalize()}: {value}")
     
     trainer = Trainer(config)
