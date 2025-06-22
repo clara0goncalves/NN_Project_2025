@@ -21,3 +21,6 @@
 /src/preprocessing/__pycache__
 /utils/__pycache__
 /models/__pycache__
+/__tests__/.ipynb_checkpoints
+/__tests__/.ipynb_checkpoints
+/models/__pycache__

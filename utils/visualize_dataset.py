@@ -1,10 +1,14 @@
 # visualize_batch.py
 import matplotlib.pyplot as plt
 import torch
-from utils.data_utils import WaterBodiesDataset
+import sys
 from torch.utils.data import DataLoader
 import os, glob
 from sklearn.model_selection import train_test_split
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.data_utils import WaterBodiesDataset
 
 # Load and sort image/mask paths
 image_paths = sorted(glob.glob("datasets/train/images/*"))

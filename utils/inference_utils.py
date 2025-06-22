@@ -1,7 +1,3 @@
-# utils/inference_utils.py
-"""
-
-"""
 import os
 import torch
 import cv2
@@ -9,35 +5,56 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as transforms
+import inspect
+import segmentation_models_pytorch as smp
+import sys
 
-from models.unet import get_model
+# Add project root to path and import model factories
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from models.aer_unet import get_aer_unet_model
+from models.segformer import get_segformer_model
+
+# --- MODEL FACTORY (similar to evaluate.py) ---
+
+def get_smp_unet_plus_plus_effnetb4(n_channels=3, n_classes=1, **kwargs):
+    """Factory for the SMP U-Net++ model."""
+    return smp.UnetPlusPlus(encoder_name="efficientnet-b4", encoder_weights=None, in_channels=n_channels, classes=n_classes)
+
+def get_model_from_name(model_name):
+    """Returns the correct model-building function based on its name."""
+    model_map = {
+        'aer-unet': get_aer_unet_model,
+        'unet++-pretrained-encoder': get_smp_unet_plus_plus_effnetb4,
+        'segformer-b4': get_segformer_model,
+    }
+    if model_name not in model_map:
+        raise ValueError(f"Unknown model name: {model_name}. Supported models are {list(model_map.keys())}")
+    return model_map[model_name]
 
 
 class WaterBodySegmentor:
     """
-    Easy-to-use wrapper for water body segmentation inference
+    Easy-to-use wrapper for water body segmentation inference using any supported model.
     """
     
     def __init__(self, model_path, device=None):
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = device
-            
+        self.device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
         print(f"Loading model on {self.device}")
         
-        # Load checkpoint
         checkpoint = torch.load(model_path, map_location=self.device)
-        config = checkpoint.get('config', {})
+        config = checkpoint.get('config')
+        if not config:
+            raise ValueError("The checkpoint file is missing the 'config' dictionary, which is required to rebuild the model.")
         
-        # Initialize model
-        self.model = get_model(
-            n_channels=config.get('n_channels', 3),
-            n_classes=config.get('n_classes', 1),
-            bilinear=config.get('bilinear', False)
-        ).to(self.device)
+        model_type = config.get('model_type')
+        print(f"Rebuilding model of type: '{model_type}'")
+
+        # Initialize model using the factory, based on the config from the checkpoint
+        get_model_func = get_model_from_name(model_type)
+        sig = inspect.signature(get_model_func)
+        model_args = {k: v for k, v in config.items() if k in sig.parameters}
         
-        # Load weights
+        self.model = get_model_func(**model_args).to(self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.eval()
         
@@ -48,31 +65,19 @@ class WaterBodySegmentor:
         if isinstance(image_path, str):
             image = cv2.imread(image_path)[:, :, ::-1]  # BGR to RGB
         else:
-            image = image_path  # Assume it's already a numpy array
+            image = image_path  # Assume it's already a numpy array (RGB)
             
         original_size = image.shape[:2]
         
-        # Resize to model input size (256x256)
         image_resized = cv2.resize(image, (256, 256))
         image_normalized = image_resized.astype(np.float32) / 255.0
         
-        # Convert to tensor
         image_tensor = torch.from_numpy(image_normalized).permute(2, 0, 1).unsqueeze(0)
-        
         return image_tensor.to(self.device), original_size, image
     
     def predict(self, image_path, threshold=0.5):
         """
-        Predict water bodies in an image
-        
-        Args:
-            image_path: Path to image or numpy array
-            threshold: Probability threshold for binary classification
-            
-        Returns:
-            probability_map: Probability map of water bodies
-            binary_mask: Binary mask of water bodies
-            original_image: Original input image
+        Predict water bodies in an image.
         """
         image_tensor, original_size, original_image = self.preprocess_image(image_path)
         
@@ -80,63 +85,35 @@ class WaterBodySegmentor:
             output = self.model(image_tensor)
             probability = torch.sigmoid(output).cpu().squeeze().numpy()
             
-        # Resize back to original size
         probability_resized = cv2.resize(probability, (original_size[1], original_size[0]))
         binary_mask = (probability_resized > threshold).astype(np.uint8)
         
         return probability_resized, binary_mask, original_image
     
     def visualize_prediction(self, image_path, threshold=0.5, save_path=None, show_plot=True):
-        """
-        Visualize prediction results
-        """
+        """Visualize prediction results"""
         prob_map, binary_mask, original_image = self.predict(image_path, threshold)
         
-        # Create visualization
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         
-        # Original image
-        axes[0, 0].imshow(original_image)
-        axes[0, 0].set_title('Original Image', fontsize=14)
-        axes[0, 0].axis('off')
-        
-        # Probability map
-        im1 = axes[0, 1].imshow(prob_map, cmap='viridis', vmin=0, vmax=1)
-        axes[0, 1].set_title('Water Probability Map', fontsize=14)
-        axes[0, 1].axis('off')
-        plt.colorbar(im1, ax=axes[0, 1], fraction=0.046, pad=0.04)
-        
-        # Binary mask
-        axes[1, 0].imshow(binary_mask, cmap='Blues')
-        axes[1, 0].set_title(f'Binary Mask (threshold={threshold})', fontsize=14)
-        axes[1, 0].axis('off')
-        
-        # Overlay
+        axes[0, 0].imshow(original_image); axes[0, 0].set_title('Original Image'); axes[0, 0].axis('off')
+        im1 = axes[0, 1].imshow(prob_map, cmap='viridis', vmin=0, vmax=1); axes[0, 1].set_title('Water Probability Map'); axes[0, 1].axis('off')
+        plt.colorbar(im1, ax=axes[0, 1])
+        axes[1, 0].imshow(binary_mask, cmap='Blues'); axes[1, 0].set_title(f'Binary Mask (threshold={threshold})'); axes[1, 0].axis('off')
         overlay = self.create_overlay(original_image, binary_mask)
-        axes[1, 1].imshow(overlay)
-        axes[1, 1].set_title('Overlay on Original', fontsize=14)
-        axes[1, 1].axis('off')
+        axes[1, 1].imshow(overlay); axes[1, 1].set_title('Overlay on Original'); axes[1, 1].axis('off')
         
         plt.tight_layout()
-        
-        if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            print(f"Visualization saved to {save_path}")
-            
-        if show_plot:
-            plt.show()
-        else:
-            plt.close()
-            
+        if save_path: plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        if show_plot: plt.show()
+        else: plt.close()
         return fig
     
     def create_overlay(self, original_image, binary_mask, color=[0, 255, 255], alpha=0.4):
         """Create overlay of mask on original image"""
         overlay = original_image.copy()
         overlay[binary_mask > 0] = color
-        result = cv2.addWeighted(original_image.astype(np.uint8), 1-alpha, 
-                               overlay.astype(np.uint8), alpha, 0)
-        return result
+        return cv2.addWeighted(original_image.astype(np.uint8), 1-alpha, overlay.astype(np.uint8), alpha, 0)
     
     def batch_predict(self, image_folder, output_folder, threshold=0.5):
         """
@@ -214,39 +191,40 @@ class WaterBodySegmentor:
 def main():
     """Example usage of the WaterBodySegmentor"""
     
-    # Initialize segmentor
-    model_path = 'checkpoints/unet_water_segmentation_20241201_123456/best.pth'  # Update path
+    # --- IMPORTANT ---
+    # Update the model_path to point to a valid, trained model checkpoint.
+    # For example: 'checkpoints/aer-unet_water_segmentation_20250622_170000/best.pth'
+    model_path = 'path/to/your/best.pth'
+    
+    if not os.path.exists(model_path):
+        print(f"Error: Model checkpoint not found at '{model_path}'")
+        print("Please update the 'model_path' in the main() function of inference_utils.py")
+        return
+
     segmentor = WaterBodySegmentor(model_path)
     
-    # Single image prediction
-    image_path = 'path/to/your/test/image.jpg'  # Update path
+    # Single image prediction example
+    image_path = 'path/to/your/test/image.jpg'
     
     if os.path.exists(image_path):
-        print("Running single image prediction...")
-        
-        # Visualize prediction
+        print("\n--- Running single image prediction... ---")
         segmentor.visualize_prediction(
             image_path, 
-            threshold=0.5, 
             save_path='prediction_result.png',
-            show_plot=False
+            show_plot=True # Set to False for non-interactive environments
         )
         
-        # Calculate water area
         area_stats = segmentor.calculate_water_area(image_path)
         print("\nWater Area Statistics:")
-        print(f"Total pixels: {area_stats['total_pixels']:,}")
-        print(f"Water pixels: {area_stats['water_pixels']:,}")
-        print(f"Water percentage: {area_stats['water_percentage']:.2f}%")
+        print(f"  - Water percentage: {area_stats['water_percentage']:.2f}%")
     
     # Batch processing example
-    input_folder = 'test_images'  # Update path
+    input_folder = 'path/to/your/test_images_folder'
     output_folder = 'predictions'
     
-    if os.path.exists(input_folder):
-        print(f"\nRunning batch prediction on {input_folder}...")
+    if os.path.isdir(input_folder):
+        print(f"\n--- Running batch prediction on '{input_folder}'... ---")
         segmentor.batch_predict(input_folder, output_folder, threshold=0.5)
-
 
 if __name__ == "__main__":
     main()
