@@ -129,9 +129,6 @@ This will bring up the main menu:
 ## Results
 
 ```bash
-===================================================
-EVALUATION RESULTS
-===================================================
 
 Dice Score:
 Mean: 0.9021 +- 0.1079
