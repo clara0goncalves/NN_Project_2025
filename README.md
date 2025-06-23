@@ -10,6 +10,12 @@ Gonçalves Clara
 
 This project provides a complete and streamlined pipeline for segmentation of water bodies from satellite using PyTorch. It is built to be flexible and powerful, allowing for easy training, evaluation, and inference with a selection of advanced deep learning models.
 
+## Branches Overview:
+
+-   **Main**: This was our baseline up to a certain point, contains several suboptimal models and NWDI implementation.
+-   **Optimal-models**: This branch contains our optimized models.
+-   **Best (default)**: This contains the best version of our project, with our best models and all features implemented.
+
 ## Features
 
 This project is packed with features to support a robust deep learning workflow from start to finish:
@@ -25,11 +31,12 @@ This project is packed with features to support a robust deep learning workflow 
         -   Automatic Mixed Precision (AMP) for faster training on compatible GPUs.
         -   Early Stopping to prevent overfitting and save time.
         -   Gradient Clipping to stabilize training.
+-   **NWDI (Normalized Water Difference Index)**: Integrated for enhanced water body detection and analysis.
 -   **Comprehensive Evaluation**:
     -   Calculates a full suite of segmentation metrics: `IoU (Jaccard)`, `Dice Score`, `Pixel Accuracy`, `Precision`, `Recall`, and `F1-Score`.
     -   **Ensemble Evaluation**: Evaluate the combined performance of two different models by averaging their predictions.
     -   **Test-Time Augmentation (TTA)**: Improve prediction accuracy by averaging predictions over multiple augmented versions of a test image.
-    -   **Interactive Data Verification**: During ensemble evaluation, the script can automatically flag samples with a low IoU score, display the ground truth mask to you, and allow you to discard the sample from the final metrics if the mask is broken.
+    -   **Interactive Data Verification**: During ensemble evaluation, the script can automatically flag samples with a low IoU score, display the ground truth mask, and allow you to discard the sample from the final metrics if the mask is broken.
 -   **Logging & Visualization**:
     -   Logs all training and validation metrics to **TensorBoard** for real-time monitoring.
     -   Saves a CSV file (`training_history.csv`) and a plot (`training_plots.png`) of the training session in the experiment's checkpoint directory.
@@ -84,7 +91,11 @@ The entire workflow is managed through the interactive `main.py` script.
 -   Clone the repository to your local machine.
 -   Download the dataset from [Kaggle](https://www.kaggle.com/datasets/franciscoescobar/satellite-images-of-water-bodies), exctract it and place the raw dataset folder `Water Bodies Dataset/` in the project root (inside the Water Bodies Dataset there should be images in `Images/` and masks in `Masks/`).
 
-**2. Launch the Interactive Menu**
+**2. Downloading the models (optional)**
+
+If you don't want to train the models, out best ones are available to be downloaded from [gdrive](https://drive.google.com/file/d/1ZRSlaTdkDCy7oLkn-o6TE4KSIppa0Szp/view?usp=sharing). This archive contains the checkpoints folder to be places in the root directory
+
+**3. Launch the Interactive Menu**
 
 Open your terminal in the project's root directory and run:
 
