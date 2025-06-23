@@ -162,6 +162,10 @@ F1-Score: 0.9322
 ```
 These are excellent results overall. The high mean scores for IoU (0.836) and Dice (0.902) suggest the model is highly effective and accurate on the majority of the data. However, the wide performance range and high standard deviation point to a small subset of challenging images where the model fails, which could be an area to target for future improvement.
 
+## Other
+
+A google colab is provided [here](https://colab.research.google.com/drive/1LVjBmv6WOMV6g4T-cqsWzMvE8rsGufF8?authuser=1#scrollTo=AbY1QyZb3p8R), although a local run is recommended for path handling reasons
+
 ## References
 
 * **AER U-Net**: Naga Surekha Jonnala1, Shaik Siraaj, Y. Prastuti, P. Chinnababu, B. Praveen babu, Shonak Bansal, Prashant Upadhyaya, Krishna Prakash1, Mohammad Rashed Iqbal Faruque & K. S. Al-mugren (2024). AER U-Net: attention-enhanced multi-scale residual U-Net structure for water body segmentation using Sentinel-2 satellite images 
