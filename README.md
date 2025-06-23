@@ -1,5 +1,9 @@
 # Water Body Segmentation Project
 
+Authors:
+De Salvo Ludovico
+Gonçalves Clara
+
 ## Introduction
 
 This project provides a complete and streamlined pipeline for segmentation of water bodies from satellite using PyTorch. It is built to be flexible and powerful, allowing for easy training, evaluation, and inference with a selection of advanced deep learning models.
@@ -119,6 +123,44 @@ This will bring up the main menu:
     * Select the specific trained model checkpoint(s) you want to test.
     * Enable optional features like Test-Time Augmentation (TTA) for improved accuracy.
     * Interactively verify and filter out potentially broken ground truth masks during ensemble evaluation.
+
+## Results
+
+```bash
+===================================================
+EVALUATION RESULTS
+===================================================
+
+Dice Score:
+Mean: 0.9021 +- 0.1079
+Range: [0.1597, 1.0000]
+
+Iou Score:
+Mean: 0.8361 +- 0.1499
+Range: [0.0868, 1.0000]
+
+Pixel acc Score:
+Mean: 0.9560 +- 0.0505
+Range: [0.5815, 1.0000]
+
+Precision Score:
+Mean: 0.9241 +- 0.0937
+Range: [0.3489, 1.0000]
+
+Recall Score:
+Mean: 0.8944 +- 0.1318
+Range: [0.0890, 1.0000]
+
+F1 Score:
+Mean: 0.9021 +- 0.1079
+Range: [0.1597, 1.0000]
+
+Overall Dataset Metrics (from total counts):
+Precision: 0.9466
+Recall (Sensitivity): 0.9183
+F1-Score: 0.9322
+```
+These are excellent results overall. The high mean scores for IoU (0.836) and Dice (0.902) suggest the model is highly effective and accurate on the majority of the data. However, the wide performance range and high standard deviation point to a small subset of challenging images where the model fails, which could be an area to target for future improvement.
 
 ## References
 
