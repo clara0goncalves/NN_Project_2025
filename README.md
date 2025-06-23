@@ -131,35 +131,36 @@ This will bring up the main menu:
 ```bash
 
 Dice Score:
-Mean: 0.9021 +- 0.1079
-Range: [0.1597, 1.0000]
+Mean: 0.9343 ± 0.0635
+Range: [0.6608, 1.0000]
 
 Iou Score:
-Mean: 0.8361 +- 0.1499
-Range: [0.0868, 1.0000]
+Mean: 0.8827 ± 0.1017
+Range: [0.4934, 1.0000]
 
 Pixel acc Score:
-Mean: 0.9560 +- 0.0505
-Range: [0.5815, 1.0000]
+Mean: 0.9677 ± 0.0317
+Range: [0.7965, 1.0000]
 
 Precision Score:
-Mean: 0.9241 +- 0.0937
-Range: [0.3489, 1.0000]
+Mean: 0.9471 ± 0.0660
+Range: [0.5697, 1.0000]
 
 Recall Score:
-Mean: 0.8944 +- 0.1318
-Range: [0.0890, 1.0000]
+Mean: 0.9268 ± 0.0819
+Range: [0.4992, 1.0000]
 
 F1 Score:
-Mean: 0.9021 +- 0.1079
-Range: [0.1597, 1.0000]
+Mean: 0.9343 ± 0.0635
+Range: [0.6608, 1.0000]
 
 Overall Dataset Metrics (from total counts):
-Precision: 0.9466
-Recall (Sensitivity): 0.9183
-F1-Score: 0.9322
+Precision: 0.9587
+Recall (Sensitivity): 0.9405
+F1-Score: 0.9495
+
 ```
-These are excellent results overall. The high mean scores for IoU (0.836) and Dice (0.902) suggest the model is highly effective and accurate on the majority of the data. However, the wide performance range and high standard deviation point to a small subset of challenging images where the model fails, which could be an area to target for future improvement.
+These are excellent results overall. The high mean scores for IoU (0.8827) and Dice (0.9343) suggest the model is highly effective and accurate on the majority of the data. Additional work could be directed towards low scoring samples.
 
 ## Other
 
