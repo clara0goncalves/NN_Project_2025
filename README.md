@@ -34,6 +34,7 @@ This project is packed with features to support a robust deep learning workflow 
 
 The project is organized into a standard structure for clarity and scalability.
 
+```bash
 NN_Project_2025/
 │
 ├── checkpoints/
@@ -66,7 +67,7 @@ NN_Project_2025/
 ├── main.py                    # The main interactive menu to run the project
 ├── train.py                   # The main script for training new models
 └── requirements.txt           # All Python package dependencies
-
+```
 
 ## How to Run the Project
 
@@ -87,6 +88,7 @@ python3 main.py
 
 This will bring up the main menu:
 
+```bash
 ============================
   Water Segmentation Menu
 ============================
@@ -96,6 +98,7 @@ This will bring up the main menu:
 4. Train a Model
 5. Evaluate a Model
 6. Exit
+```
 
 ### Workflow Steps
 
