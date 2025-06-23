@@ -52,7 +52,7 @@ NN_Project_2025/
 │   └── test/                  # Test images and masks
 │
 ├── evaluation_results/
-│   └── <evaluation_run_name>/ # Stores prediction examples and metrics from evaluate.py
+│   └── <evaluation_run_name>  # Stores prediction examples and metrics from evaluate.py
 │
 ├── models/
 │   ├── aer_unet.py            # Defines the AER U-Net architecture
@@ -82,7 +82,7 @@ The entire workflow is managed through the interactive `main.py` script.
 **1. Setup**
 
 -   Clone the repository to your local machine.
--   Place your raw dataset into the `Water Bodies Dataset/` folder, with images in `Images/` and masks in `Masks/`.
+-   Download the dataset from [Kaggle](https://www.kaggle.com/datasets/franciscoescobar/satellite-images-of-water-bodies), exctract it and place the raw dataset folder `Water Bodies Dataset/` in the project root (inside the Water Bodies Dataset there should be images in `Images/` and masks in `Masks/`).
 
 **2. Launch the Interactive Menu**
 
