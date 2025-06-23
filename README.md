@@ -1,7 +1,7 @@
 # Water Body Segmentation Project
 
-Authors:
-De Salvo Ludovico
+Authors:__
+De Salvo Ludovico__
 Gonçalves Clara
 
 ## Introduction
